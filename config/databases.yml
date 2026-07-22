@@ -1,0 +1,27 @@
+# 管理対象データベースの許可リスト。ここに記載されたDBのみ db-console から参照・操作できる。
+#
+# name: 実際のDB名（MariaDB上のスキーマ名と完全一致させること）
+# label: 画面表示用の日本語名
+# mode:
+#   read-only    - 閲覧・検索・CSV出力のみ
+#   data-write   - 閲覧 + レコード追加・更新・削除
+#   schema-write - データ操作 + テーブル・カラム・インデックス変更
+#
+# 実装計画（docs/plan.md 相当）の 1.2 節参照:
+#   - car-care の実DB名は `app_car`（レガシー命名。`app_car_care` ではない）
+#   - asset-manager の実DB名は1Password未確認のため `app_asset_manager` を暫定値としている。
+#     M5（本番運用）着手前に `op read` で確定し、誤っていれば修正すること。
+#   - wordpress は app_ 接頭辞なしが正（VPS側の web-stack.md 参照）。
+
+databases:
+  - name: app_car
+    label: 車両管理
+    mode: data-write
+
+  - name: app_asset_manager # TODO: M5前に1Passwordで実DB名を確認する
+    label: 資産管理
+    mode: schema-write
+
+  - name: wordpress
+    label: WordPress
+    mode: read-only

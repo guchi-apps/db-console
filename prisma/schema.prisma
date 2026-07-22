@@ -1,0 +1,152 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+// --- NextAuth.js / Auth.js v5（database セッション戦略） ---
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+// database セッション戦略のため、無操作タイムアウト・再認証状態もこのテーブルで管理する。
+// lastActivityAt / reauthVerifiedAt は NextAuth アダプタ本体は関知せず、
+// ミドルウェア（src/lib/reauth.ts 等）から直接 Prisma 経由で更新・参照する。
+model Session {
+  id               String    @id @default(cuid())
+  sessionToken     String    @unique
+  userId           String
+  expires          DateTime
+  lastActivityAt   DateTime  @default(now())
+  reauthVerifiedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts        Account[]
+  sessions        Session[]
+  auditLogs       AuditLog[]
+  sqlHistories    SqlHistory[]
+  userPreference  UserPreference?
+}
+
+// --- db-console 独自データ ---
+
+enum AuditAction {
+  ROW_INSERT
+  ROW_UPDATE
+  ROW_DELETE
+  TABLE_CREATE
+  TABLE_ALTER
+  TABLE_DROP
+  TABLE_TRUNCATE
+  COLUMN_ADD
+  COLUMN_ALTER
+  COLUMN_DROP
+  INDEX_ADD
+  INDEX_DROP
+  SQL_EXECUTE
+}
+
+enum AuditStatus {
+  SUCCESS
+  FAILURE
+}
+
+model AuditLog {
+  id           String      @id @default(cuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action       AuditAction
+  databaseName String
+  tableName    String?
+  objectName   String? // カラム名・インデックス名等
+  sqlText      String?     @db.Text
+  beforeData   String?     @db.LongText // JSON文字列
+  afterData    String?     @db.LongText // JSON文字列
+  affectedRows Int?
+  status       AuditStatus
+  errorMessage String?     @db.Text
+  ipAddress    String?
+  userAgent    String?     @db.Text
+  createdAt    DateTime    @default(now())
+
+  @@index([userId, createdAt])
+  @@index([databaseName, tableName])
+}
+
+enum SqlQueryType {
+  SELECT
+  INSERT
+  UPDATE
+  DELETE
+  CREATE_TABLE
+  ALTER_TABLE
+  OTHER
+}
+
+model SqlHistory {
+  id           String       @id @default(cuid())
+  userId       String
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  databaseName String
+  sqlText      String       @db.Text
+  queryType    SqlQueryType
+  durationMs   Int
+  affectedRows Int?
+  status       AuditStatus
+  errorMessage String?      @db.Text
+  createdAt    DateTime     @default(now())
+
+  @@index([userId, createdAt])
+}
+
+enum RowViewMode {
+  TABLE
+  CARD
+}
+
+model UserPreference {
+  userId       String      @id
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  theme        String      @default("system") // "light" | "dark" | "system"
+  pageSize     Int         @default(50)
+  rowViewMode  RowViewMode @default(TABLE)
+  updatedAt    DateTime    @updatedAt
+}

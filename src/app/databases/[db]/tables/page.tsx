@@ -1,0 +1,50 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+
+import { getDatabaseEntry } from "@/lib/config";
+import { listTables } from "@/lib/introspection";
+
+export default async function TablesPage({
+  params,
+}: {
+  params: Promise<{ db: string }>;
+}) {
+  const { db } = await params;
+  const entry = getDatabaseEntry(db);
+  if (!entry) {
+    notFound();
+  }
+
+  const tables = await listTables(db);
+
+  return (
+    <main className="mx-auto flex max-w-2xl flex-1 flex-col gap-4 p-6">
+      <div className="flex flex-col">
+        <Link href="/" className="text-muted-foreground text-sm hover:underline">
+          ← データベース一覧
+        </Link>
+        <h1 className="text-xl font-semibold">{entry.label}</h1>
+        <span className="text-muted-foreground text-sm">{entry.name}</span>
+      </div>
+
+      <ul className="flex flex-col gap-2">
+        {tables.map((table) => (
+          <li key={table.name}>
+            <Link
+              href={`/databases/${db}/tables/${table.name}`}
+              className="flex items-center justify-between rounded-lg border p-3 hover:bg-accent"
+            >
+              <span className="font-medium">{table.name}</span>
+              <span className="text-muted-foreground text-xs">
+                {table.approximateRowCount ?? "-"} 件（概算）
+              </span>
+            </Link>
+          </li>
+        ))}
+        {tables.length === 0 && (
+          <li className="text-muted-foreground text-sm">テーブルがありません</li>
+        )}
+      </ul>
+    </main>
+  );
+}
