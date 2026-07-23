@@ -12,7 +12,7 @@ export default async function TablesPage({
 }) {
   await requireSessionForPage();
   const { db } = await params;
-  const entry = getDatabaseEntry(db);
+  const entry = await getDatabaseEntry(db);
   if (!entry) {
     notFound();
   }

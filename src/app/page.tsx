@@ -11,11 +11,16 @@ const MODE_LABEL: Record<string, string> = {
 
 export default async function Home() {
   await requireSessionForPage();
-  const databases = getDatabasesConfig();
+  const databases = await getDatabasesConfig();
 
   return (
     <main className="mx-auto flex max-w-2xl flex-1 flex-col gap-4 p-6">
-      <h1 className="text-xl font-semibold">データベース一覧</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold">データベース一覧</h1>
+        <Link href="/settings" className="text-muted-foreground text-sm hover:underline">
+          設定
+        </Link>
+      </div>
       <ul className="flex flex-col gap-3">
         {databases.map((entry) => (
           <li key={entry.name}>

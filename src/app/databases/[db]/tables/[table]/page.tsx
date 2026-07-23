@@ -30,7 +30,7 @@ export default async function TableRowsPage({
   const { db, table } = await params;
   const query = await searchParams;
 
-  const entry = getDatabaseEntry(db);
+  const entry = await getDatabaseEntry(db);
   if (!entry) {
     notFound();
   }

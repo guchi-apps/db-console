@@ -16,7 +16,7 @@ export async function GET(
   const { db } = await params;
 
   try {
-    const entry = getDatabaseEntry(db);
+    const entry = await getDatabaseEntry(db);
     if (!entry) {
       throw new DatabaseNotAllowedError(db);
     }

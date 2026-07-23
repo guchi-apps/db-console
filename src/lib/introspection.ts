@@ -51,7 +51,7 @@ export interface RowsPage {
 /** 指定DBの文字コード・照合順序を取得する（information_schema.SCHEMATA）。 */
 export async function getDatabaseInfo(databaseName: string): Promise<DatabaseInfo> {
   assertSafeDatabaseName(databaseName);
-  const pool = getPoolForOperation(databaseName, "read-only");
+  const pool = await getPoolForOperation(databaseName, "read-only");
 
   // information_schema のカラムはMariaDB内部でUPPER CASE定義のため、明示的なASエイリアスで
   // 返却キーの大文字小文字を確定させる（エイリアスなしだとドライバがUPPER CASEのまま返す）。
@@ -74,7 +74,7 @@ export async function getDatabaseInfo(databaseName: string): Promise<DatabaseInf
 /** 指定DB内の許可テーブル一覧を取得する（information_schema.TABLES）。 */
 export async function listTables(databaseName: string): Promise<TableSummary[]> {
   assertSafeDatabaseName(databaseName);
-  const pool = getPoolForOperation(databaseName, "read-only");
+  const pool = await getPoolForOperation(databaseName, "read-only");
 
   const [rows] = await pool.query<RowDataPacket[]>(
     `SELECT table_name AS table_name, engine AS engine, table_rows AS table_rows,
@@ -99,7 +99,7 @@ export async function getTableColumns(
   databaseName: string,
   tableName: string,
 ): Promise<ColumnInfo[]> {
-  const pool = getPoolForOperation(databaseName, "read-only");
+  const pool = await getPoolForOperation(databaseName, "read-only");
   await assertTableExists(pool, databaseName, tableName);
 
   const [rows] = await pool.query<RowDataPacket[]>(
@@ -132,7 +132,7 @@ export async function getTableIndexes(
   databaseName: string,
   tableName: string,
 ): Promise<IndexInfo[]> {
-  const pool = getPoolForOperation(databaseName, "read-only");
+  const pool = await getPoolForOperation(databaseName, "read-only");
   await assertTableExists(pool, databaseName, tableName);
 
   const [rows] = await pool.query<RowDataPacket[]>(
@@ -178,7 +178,7 @@ export async function getTableRows(
   tableName: string,
   options: GetRowsOptions = {},
 ): Promise<RowsPage> {
-  const pool = getPoolForOperation(databaseName, "read-only");
+  const pool = await getPoolForOperation(databaseName, "read-only");
   await assertTableExists(pool, databaseName, tableName);
 
   const columns = await getTableColumns(databaseName, tableName);

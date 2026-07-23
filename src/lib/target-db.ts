@@ -67,11 +67,11 @@ export class ModeNotAllowedError extends Error {
  * 適切なロールのプールを返す。この関数を経由せずに getDataPool/getSchemaPool を直接
  * 呼ぶAPIルートを作らないこと（認可チェックの抜け漏れを防ぐため）。
  */
-export function getPoolForOperation(
+export async function getPoolForOperation(
   databaseName: string,
   requiredMode: DatabaseMode,
-): Pool {
-  const entry = getDatabaseEntry(databaseName);
+): Promise<Pool> {
+  const entry = await getDatabaseEntry(databaseName);
   if (!entry) {
     throw new DatabaseNotAllowedError(databaseName);
   }
