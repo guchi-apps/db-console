@@ -3,6 +3,7 @@ import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import {
   assertColumnExists,
   assertSafeDatabaseName,
+  assertSafeTableName,
   assertTableExists,
   qualifyTable,
   quoteColumn,
@@ -380,4 +381,41 @@ export async function deleteRows(
     params,
   );
   return { affectedRows: result.affectedRows };
+}
+
+// --- テーブル管理（構造変更用ロール = schema-write が必要） ---
+// 識別子（DB名・テーブル名）のみで構成するDDLのため、値のバインドが効かない
+// テーブル定義（カラム型等）は扱わない。すべて文字種チェック済みの識別子のみを使う。
+
+/** テーブル名を変更する。 */
+export async function renameTable(
+  databaseName: string,
+  oldTableName: string,
+  newTableName: string,
+): Promise<void> {
+  const pool = await getPoolForOperation(databaseName, "schema-write");
+  await assertTableExists(pool, databaseName, oldTableName);
+  assertSafeTableName(newTableName);
+
+  const qualifiedOld = qualifyTable(databaseName, oldTableName);
+  const qualifiedNew = qualifyTable(databaseName, newTableName);
+  await pool.query(`RENAME TABLE ${qualifiedOld} TO ${qualifiedNew}`);
+}
+
+/** テーブルを削除する（破壊的操作。呼び出し側で再認証・対象名入力確認を行うこと）。 */
+export async function dropTable(databaseName: string, tableName: string): Promise<void> {
+  const pool = await getPoolForOperation(databaseName, "schema-write");
+  await assertTableExists(pool, databaseName, tableName);
+
+  const qualifiedTable = qualifyTable(databaseName, tableName);
+  await pool.query(`DROP TABLE ${qualifiedTable}`);
+}
+
+/** テーブルを空データ化する（破壊的操作。呼び出し側で再認証・対象名入力確認を行うこと）。 */
+export async function truncateTable(databaseName: string, tableName: string): Promise<void> {
+  const pool = await getPoolForOperation(databaseName, "schema-write");
+  await assertTableExists(pool, databaseName, tableName);
+
+  const qualifiedTable = qualifyTable(databaseName, tableName);
+  await pool.query(`TRUNCATE TABLE ${qualifiedTable}`);
 }
