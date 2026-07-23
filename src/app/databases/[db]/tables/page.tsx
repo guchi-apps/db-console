@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { getDatabaseEntry } from "@/lib/config";
+import { getDatabaseEntry, modeAtLeast } from "@/lib/config";
 import { listTables } from "@/lib/introspection";
 import { requireSessionForPage } from "@/lib/session";
 
@@ -18,6 +18,7 @@ export default async function TablesPage({
   }
 
   const tables = await listTables(db);
+  const canCreateTable = modeAtLeast(entry.mode, "schema-write");
 
   return (
     <main className="mx-auto flex max-w-2xl flex-1 flex-col gap-4 p-6">
@@ -25,7 +26,17 @@ export default async function TablesPage({
         <Link href="/" className="text-muted-foreground text-sm hover:underline">
           ← データベース一覧
         </Link>
-        <h1 className="text-xl font-semibold">{entry.label}</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-semibold">{entry.label}</h1>
+          {canCreateTable && (
+            <Link
+              href={`/databases/${db}/tables/new`}
+              className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
+            >
+              + テーブル作成
+            </Link>
+          )}
+        </div>
         <span className="text-muted-foreground text-sm">{entry.name}</span>
       </div>
 

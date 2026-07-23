@@ -529,3 +529,39 @@ export async function dropIndex(
   assertSafeIndexName(indexName);
   await pool.query(`ALTER TABLE ${qualifiedTable} DROP INDEX ${quoteIdentifier(indexName)}`);
 }
+
+export interface CreateTableColumnInput {
+  columnName: string;
+  sqlType: string;
+  nullable: boolean;
+  primaryKey: boolean;
+}
+
+/** テーブルを新規作成する。sqlType は column-types.ts の許可リストで組み立てたものだけを渡すこと。 */
+export async function createTable(
+  databaseName: string,
+  tableName: string,
+  columns: CreateTableColumnInput[],
+): Promise<void> {
+  const pool = await getPoolForOperation(databaseName, "schema-write");
+  assertSafeTableName(tableName);
+  if (columns.length === 0) {
+    throw new Error("カラムを1つ以上指定してください");
+  }
+  for (const column of columns) {
+    assertSafeColumnName(column.columnName);
+  }
+
+  const qualifiedTable = qualifyTable(databaseName, tableName);
+  const columnDefs = columns.map(
+    (c) => `${quoteColumn(c.columnName)} ${c.sqlType} ${c.nullable ? "NULL" : "NOT NULL"}`,
+  );
+  const primaryKeyColumns = columns.filter((c) => c.primaryKey).map((c) => c.columnName);
+  if (primaryKeyColumns.length > 0) {
+    columnDefs.push(`PRIMARY KEY (${primaryKeyColumns.map((c) => quoteColumn(c)).join(", ")})`);
+  }
+
+  await pool.query(
+    `CREATE TABLE ${qualifiedTable} (${columnDefs.join(", ")}) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+  );
+}
