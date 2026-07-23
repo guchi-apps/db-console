@@ -5,7 +5,14 @@ import { getDatabaseEntry, modeAtLeast } from "@/lib/config";
 import { getTableColumns, getTableIndexes } from "@/lib/introspection";
 import { IdentifierNotFoundError } from "@/lib/identifier";
 import { requireSessionForPage } from "@/lib/session";
+import { COLUMN_TYPE_TEMPLATES } from "@/lib/column-types";
 import { renameTableAction } from "../schema-actions";
+import {
+  addColumnAction,
+  addIndexAction,
+  dropColumnAction,
+  dropIndexAction,
+} from "../column-actions";
 
 export default async function TableStructurePage({
   params,
@@ -67,6 +74,7 @@ export default async function TableStructurePage({
                 <th className="px-3 py-2 text-left font-medium">デフォルト</th>
                 <th className="px-3 py-2 text-left font-medium">キー</th>
                 <th className="px-3 py-2 text-left font-medium">その他</th>
+                {canManageSchema && <th className="px-3 py-2" />}
               </tr>
             </thead>
             <tbody>
@@ -78,11 +86,98 @@ export default async function TableStructurePage({
                   <td className="px-3 py-2">{column.columnDefault ?? "-"}</td>
                   <td className="px-3 py-2">{column.columnKey || "-"}</td>
                   <td className="px-3 py-2">{column.extra || "-"}</td>
+                  {canManageSchema && (
+                    <td className="px-3 py-2">
+                      <form action={dropColumnAction} className="flex items-center gap-1">
+                        <input type="hidden" name="__db" value={db} />
+                        <input type="hidden" name="__table" value={table} />
+                        <input type="hidden" name="columnName" value={column.name} />
+                        <input
+                          type="text"
+                          name="confirmName"
+                          placeholder="カラム名を入力"
+                          required
+                          className="w-28 rounded-md border px-2 py-1 text-xs"
+                        />
+                        <button
+                          type="submit"
+                          className="rounded-md border border-red-300 px-2 py-1 text-xs text-red-600 hover:bg-red-50"
+                        >
+                          削除
+                        </button>
+                      </form>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+
+        {canManageSchema && (
+          <form
+            action={addColumnAction}
+            className="flex flex-wrap items-end gap-2 rounded-lg border p-3"
+          >
+            <input type="hidden" name="__db" value={db} />
+            <input type="hidden" name="__table" value={table} />
+            <label className="flex flex-col gap-1 text-xs">
+              カラム名
+              <input
+                type="text"
+                name="columnName"
+                required
+                className="rounded-md border px-2 py-1 text-sm"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs">
+              型
+              <select name="typeKey" className="rounded-md border px-2 py-1 text-sm">
+                {COLUMN_TYPE_TEMPLATES.map((t) => (
+                  <option key={t.key} value={t.key}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs">
+              パラメータ1
+              <input
+                type="text"
+                name="param1"
+                placeholder="型により意味が変わります"
+                className="w-40 rounded-md border px-2 py-1 text-sm"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs">
+              パラメータ2
+              <input
+                type="text"
+                name="param2"
+                placeholder="DECIMALのみ使用"
+                className="w-32 rounded-md border px-2 py-1 text-sm"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs">
+              デフォルト値
+              <input
+                type="text"
+                name="defaultValue"
+                className="w-32 rounded-md border px-2 py-1 text-sm"
+              />
+            </label>
+            <label className="flex items-center gap-1 text-xs">
+              <input type="checkbox" name="nullable" defaultChecked className="h-4 w-4" />
+              NULL許可
+            </label>
+            <button
+              type="submit"
+              className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
+            >
+              カラム追加
+            </button>
+          </form>
+        )}
       </section>
 
       <section className="flex flex-col gap-2">
@@ -94,19 +189,47 @@ export default async function TableStructurePage({
                 <th className="px-3 py-2 text-left font-medium">インデックス名</th>
                 <th className="px-3 py-2 text-left font-medium">種別</th>
                 <th className="px-3 py-2 text-left font-medium">カラム</th>
+                {canManageSchema && <th className="px-3 py-2" />}
               </tr>
             </thead>
             <tbody>
               {indexes.map((index) => (
                 <tr key={index.name} className="border-b last:border-0">
                   <td className="px-3 py-2 font-medium">{index.name}</td>
-                  <td className="px-3 py-2">{index.unique ? "UNIQUE" : "INDEX"}</td>
+                  <td className="px-3 py-2">
+                    {index.name === "PRIMARY" ? "PRIMARY KEY" : index.unique ? "UNIQUE" : "INDEX"}
+                  </td>
                   <td className="px-3 py-2">{index.columns.join(", ")}</td>
+                  {canManageSchema && (
+                    <td className="px-3 py-2">
+                      <form action={dropIndexAction} className="flex items-center gap-1">
+                        <input type="hidden" name="__db" value={db} />
+                        <input type="hidden" name="__table" value={table} />
+                        <input type="hidden" name="indexName" value={index.name} />
+                        <input
+                          type="text"
+                          name="confirmName"
+                          placeholder="インデックス名を入力"
+                          required
+                          className="w-32 rounded-md border px-2 py-1 text-xs"
+                        />
+                        <button
+                          type="submit"
+                          className="rounded-md border border-red-300 px-2 py-1 text-xs text-red-600 hover:bg-red-50"
+                        >
+                          削除
+                        </button>
+                      </form>
+                    </td>
+                  )}
                 </tr>
               ))}
               {indexes.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="text-muted-foreground px-3 py-6 text-center">
+                  <td
+                    colSpan={canManageSchema ? 4 : 3}
+                    className="text-muted-foreground px-3 py-6 text-center"
+                  >
                     インデックスがありません
                   </td>
                 </tr>
@@ -114,6 +237,48 @@ export default async function TableStructurePage({
             </tbody>
           </table>
         </div>
+
+        {canManageSchema && (
+          <form
+            action={addIndexAction}
+            className="flex flex-wrap items-end gap-2 rounded-lg border p-3"
+          >
+            <input type="hidden" name="__db" value={db} />
+            <input type="hidden" name="__table" value={table} />
+            <label className="flex flex-col gap-1 text-xs">
+              種別
+              <select name="kind" className="rounded-md border px-2 py-1 text-sm">
+                <option value="index">通常インデックス</option>
+                <option value="unique">UNIQUE</option>
+                <option value="primary">PRIMARY KEY</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs">
+              インデックス名（PRIMARYの場合は不要）
+              <input
+                type="text"
+                name="indexName"
+                className="w-40 rounded-md border px-2 py-1 text-sm"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs">
+              対象カラム（カンマ区切り、複合可）
+              <input
+                type="text"
+                name="columns"
+                required
+                placeholder="例: user_id,created_at"
+                className="w-56 rounded-md border px-2 py-1 text-sm"
+              />
+            </label>
+            <button
+              type="submit"
+              className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
+            >
+              インデックス追加
+            </button>
+          </form>
+        )}
       </section>
 
       {canManageSchema && (

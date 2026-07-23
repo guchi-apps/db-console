@@ -1,12 +1,15 @@
-import type { ResultSetHeader, RowDataPacket } from "mysql2";
+import { escape as sqlEscape, type ResultSetHeader, type RowDataPacket } from "mysql2";
 
 import {
   assertColumnExists,
+  assertSafeColumnName,
   assertSafeDatabaseName,
+  assertSafeIndexName,
   assertSafeTableName,
   assertTableExists,
   qualifyTable,
   quoteColumn,
+  quoteIdentifier,
 } from "@/lib/identifier";
 import { getPoolForOperation } from "@/lib/target-db";
 
@@ -418,4 +421,111 @@ export async function truncateTable(databaseName: string, tableName: string): Pr
 
   const qualifiedTable = qualifyTable(databaseName, tableName);
   await pool.query(`TRUNCATE TABLE ${qualifiedTable}`);
+}
+
+// --- カラム管理（構造変更用ロール = schema-write が必要） ---
+// sqlType は lib/column-types.ts の許可リストテンプレートで組み立てたものだけを渡すこと。
+
+export interface ColumnDefinitionInput {
+  columnName: string;
+  sqlType: string;
+  nullable: boolean;
+  defaultValue?: string;
+}
+
+/** カラムを追加する。 */
+export async function addColumn(
+  databaseName: string,
+  tableName: string,
+  input: ColumnDefinitionInput,
+): Promise<void> {
+  const pool = await getPoolForOperation(databaseName, "schema-write");
+  await assertTableExists(pool, databaseName, tableName);
+  assertSafeColumnName(input.columnName);
+
+  const qualifiedTable = qualifyTable(databaseName, tableName);
+  const nullSql = input.nullable ? "NULL" : "NOT NULL";
+  let sql = `ALTER TABLE ${qualifiedTable} ADD COLUMN ${quoteColumn(input.columnName)} ${input.sqlType} ${nullSql}`;
+  if (input.defaultValue) {
+    sql += ` DEFAULT ${sqlEscape(input.defaultValue)}`;
+  }
+  await pool.query(sql);
+}
+
+/** カラムを削除する（破壊的操作。呼び出し側で再認証・対象名入力確認を行うこと）。 */
+export async function dropColumn(
+  databaseName: string,
+  tableName: string,
+  columnName: string,
+): Promise<void> {
+  const pool = await getPoolForOperation(databaseName, "schema-write");
+  await assertTableExists(pool, databaseName, tableName);
+  await assertColumnExists(pool, databaseName, tableName, columnName);
+
+  const qualifiedTable = qualifyTable(databaseName, tableName);
+  await pool.query(`ALTER TABLE ${qualifiedTable} DROP COLUMN ${quoteColumn(columnName)}`);
+}
+
+// --- インデックス管理（構造変更用ロール = schema-write が必要） ---
+
+/** インデックスを追加する（PRIMARY KEY / UNIQUE / 通常インデックスの複合対応）。 */
+export async function addIndex(
+  databaseName: string,
+  tableName: string,
+  input: { indexName: string; columns: string[]; unique: boolean },
+): Promise<void> {
+  const pool = await getPoolForOperation(databaseName, "schema-write");
+  await assertTableExists(pool, databaseName, tableName);
+  if (input.columns.length === 0) {
+    throw new Error("インデックス対象のカラムを1つ以上指定してください");
+  }
+  assertSafeIndexName(input.indexName);
+  for (const column of input.columns) {
+    await assertColumnExists(pool, databaseName, tableName, column);
+  }
+
+  const qualifiedTable = qualifyTable(databaseName, tableName);
+  const columnsSql = input.columns.map((c) => quoteColumn(c)).join(", ");
+  const indexType = input.unique ? "UNIQUE INDEX" : "INDEX";
+  await pool.query(
+    `ALTER TABLE ${qualifiedTable} ADD ${indexType} ${quoteIdentifier(input.indexName)} (${columnsSql})`,
+  );
+}
+
+/** PRIMARY KEY を追加する。 */
+export async function addPrimaryKey(
+  databaseName: string,
+  tableName: string,
+  columns: string[],
+): Promise<void> {
+  const pool = await getPoolForOperation(databaseName, "schema-write");
+  await assertTableExists(pool, databaseName, tableName);
+  if (columns.length === 0) {
+    throw new Error("主キーにするカラムを1つ以上指定してください");
+  }
+  for (const column of columns) {
+    await assertColumnExists(pool, databaseName, tableName, column);
+  }
+
+  const qualifiedTable = qualifyTable(databaseName, tableName);
+  const columnsSql = columns.map((c) => quoteColumn(c)).join(", ");
+  await pool.query(`ALTER TABLE ${qualifiedTable} ADD PRIMARY KEY (${columnsSql})`);
+}
+
+/** インデックスを削除する（PRIMARYを含む破壊的操作。呼び出し側で再認証確認を行うこと）。 */
+export async function dropIndex(
+  databaseName: string,
+  tableName: string,
+  indexName: string,
+): Promise<void> {
+  const pool = await getPoolForOperation(databaseName, "schema-write");
+  await assertTableExists(pool, databaseName, tableName);
+
+  const qualifiedTable = qualifyTable(databaseName, tableName);
+  if (indexName === "PRIMARY") {
+    await pool.query(`ALTER TABLE ${qualifiedTable} DROP PRIMARY KEY`);
+    return;
+  }
+  assertSafeIndexName(indexName);
+  await pool.query(`ALTER TABLE ${qualifiedTable} DROP INDEX ${quoteIdentifier(indexName)}`);
 }
