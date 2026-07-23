@@ -28,14 +28,22 @@ export default async function TablesPage({
         </Link>
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold">{entry.label}</h1>
-          {canCreateTable && (
+          <div className="flex gap-2">
             <Link
-              href={`/databases/${db}/tables/new`}
+              href={`/databases/${db}/sql`}
               className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
             >
-              + テーブル作成
+              SQL実行
             </Link>
-          )}
+            {canCreateTable && (
+              <Link
+                href={`/databases/${db}/tables/new`}
+                className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
+              >
+                + テーブル作成
+              </Link>
+            )}
+          </div>
         </div>
         <span className="text-muted-foreground text-sm">{entry.name}</span>
       </div>
