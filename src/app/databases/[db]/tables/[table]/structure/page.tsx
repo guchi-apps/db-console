@@ -5,7 +5,8 @@ import { getDatabaseEntry, modeAtLeast } from "@/lib/config";
 import { getTableColumns, getTableIndexes } from "@/lib/introspection";
 import { IdentifierNotFoundError } from "@/lib/identifier";
 import { requireSessionForPage } from "@/lib/session";
-import { COLUMN_TYPE_TEMPLATES } from "@/lib/column-types";
+import { COLUMN_TYPE_OPTIONS } from "@/lib/column-types";
+import { ColumnTypeSelectFields } from "@/components/column-type-fields";
 import { renameTableAction } from "../schema-actions";
 import {
   addColumnAction,
@@ -146,34 +147,7 @@ export default async function TableStructurePage({
                 className="rounded-md border px-2 py-1 text-sm"
               />
             </label>
-            <label className="flex flex-col gap-1 text-xs">
-              型
-              <select name="typeKey" className="rounded-md border px-2 py-1 text-sm">
-                {COLUMN_TYPE_TEMPLATES.map((t) => (
-                  <option key={t.key} value={t.key}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-xs">
-              パラメータ1
-              <input
-                type="text"
-                name="param1"
-                placeholder="型により意味が変わります"
-                className="w-40 rounded-md border px-2 py-1 text-sm"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-xs">
-              パラメータ2
-              <input
-                type="text"
-                name="param2"
-                placeholder="DECIMALのみ使用"
-                className="w-32 rounded-md border px-2 py-1 text-sm"
-              />
-            </label>
+            <ColumnTypeSelectFields options={COLUMN_TYPE_OPTIONS} />
             <label className="flex flex-col gap-1 text-xs">
               デフォルト値
               <input

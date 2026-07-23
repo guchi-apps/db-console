@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 
 import { getDatabaseEntry, modeAtLeast } from "@/lib/config";
 import { requireSessionForPage } from "@/lib/session";
-import { COLUMN_TYPE_TEMPLATES } from "@/lib/column-types";
+import { COLUMN_TYPE_OPTIONS } from "@/lib/column-types";
+import { ColumnTypeFields } from "@/components/column-type-fields";
 import { createTableAction } from "../actions";
 
 const COLUMN_ROWS = 8;
@@ -75,29 +76,7 @@ export default async function NewTablePage({
                       className="w-32 rounded-md border px-2 py-1"
                     />
                   </td>
-                  <td className="px-2 py-1">
-                    <select name={`typeKey_${i}`} className="rounded-md border px-2 py-1">
-                      {COLUMN_TYPE_TEMPLATES.map((t) => (
-                        <option key={t.key} value={t.key}>
-                          {t.label}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-2 py-1">
-                    <input
-                      type="text"
-                      name={`param1_${i}`}
-                      className="w-24 rounded-md border px-2 py-1"
-                    />
-                  </td>
-                  <td className="px-2 py-1">
-                    <input
-                      type="text"
-                      name={`param2_${i}`}
-                      className="w-20 rounded-md border px-2 py-1"
-                    />
-                  </td>
+                  <ColumnTypeFields index={i} options={COLUMN_TYPE_OPTIONS} />
                   <td className="px-2 py-1 text-center">
                     <input
                       type="checkbox"

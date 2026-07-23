@@ -66,6 +66,18 @@ export const COLUMN_TYPE_TEMPLATES: ColumnTypeTemplate[] = [
   },
 ];
 
+export interface ColumnTypeOption {
+  key: string;
+  label: string;
+  param1Hint?: string;
+  param2Hint?: string;
+}
+
+/** Client Componentへ渡すためのシリアライズ可能な部分（build関数を除いたもの）。 */
+export const COLUMN_TYPE_OPTIONS: ColumnTypeOption[] = COLUMN_TYPE_TEMPLATES.map(
+  ({ key, label, param1Hint, param2Hint }) => ({ key, label, param1Hint, param2Hint }),
+);
+
 export function getColumnTypeTemplate(key: string): ColumnTypeTemplate {
   const template = COLUMN_TYPE_TEMPLATES.find((t) => t.key === key);
   if (!template) {
