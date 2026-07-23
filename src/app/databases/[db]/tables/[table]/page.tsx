@@ -121,6 +121,14 @@ export default async function TableRowsPage({
             検索
           </button>
         </form>
+        <Link
+          href={`/api/databases/${db}/tables/${table}/export/csv${
+            query.search ? `?search=${encodeURIComponent(query.search)}` : ""
+          }`}
+          className="rounded-md border px-4 py-2 text-sm whitespace-nowrap hover:bg-accent"
+        >
+          CSV出力
+        </Link>
         {canWrite && (
           <Link
             href={`/databases/${db}/tables/${table}/new`}
