@@ -1,4 +1,4 @@
-import type { RowDataPacket } from "mysql2";
+import type { ResultSetHeader, RowDataPacket } from "mysql2";
 
 import {
   assertColumnExists,
@@ -232,4 +232,152 @@ export async function getTableRows(
     page,
     pageSize,
   };
+}
+
+export class MissingPrimaryKeyError extends Error {
+  constructor(tableName: string) {
+    super(`${tableName} には主キーがないため、個別のレコード編集・削除はできません`);
+    this.name = "MissingPrimaryKeyError";
+  }
+}
+
+/** テーブルの主キー構成カラムを、複合主キーの場合は定義順で返す（PRIMARYインデックスがなければ空配列）。 */
+export async function getPrimaryKeyColumns(
+  databaseName: string,
+  tableName: string,
+): Promise<string[]> {
+  const indexes = await getTableIndexes(databaseName, tableName);
+  return indexes.find((index) => index.name === "PRIMARY")?.columns ?? [];
+}
+
+/** 主キー値を指定して1レコードを取得する（編集フォームの初期値表示用）。 */
+export async function getRowByPrimaryKey(
+  databaseName: string,
+  tableName: string,
+  pkValues: Record<string, string>,
+): Promise<Record<string, unknown> | null> {
+  const pool = await getPoolForOperation(databaseName, "data-write");
+  await assertTableExists(pool, databaseName, tableName);
+
+  const pkColumns = await getPrimaryKeyColumns(databaseName, tableName);
+  if (pkColumns.length === 0) {
+    throw new MissingPrimaryKeyError(tableName);
+  }
+  for (const column of pkColumns) {
+    await assertColumnExists(pool, databaseName, tableName, column);
+  }
+
+  const qualifiedTable = qualifyTable(databaseName, tableName);
+  const whereClause = pkColumns.map((c) => `${quoteColumn(c)} = ?`).join(" AND ");
+  const params = pkColumns.map((c) => pkValues[c]);
+
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT * FROM ${qualifiedTable} WHERE ${whereClause} LIMIT 1`,
+    params,
+  );
+  return (rows[0] as Record<string, unknown>) ?? null;
+}
+
+export interface InsertRowResult {
+  insertId: number | null;
+  affectedRows: number;
+}
+
+/** レコードを追加する。カラム名は実在確認済みのもののみ受け付け、値は常にプレースホルダーを使う。 */
+export async function insertRow(
+  databaseName: string,
+  tableName: string,
+  data: Record<string, unknown>,
+): Promise<InsertRowResult> {
+  const pool = await getPoolForOperation(databaseName, "data-write");
+  await assertTableExists(pool, databaseName, tableName);
+
+  const columnNames = Object.keys(data);
+  for (const column of columnNames) {
+    await assertColumnExists(pool, databaseName, tableName, column);
+  }
+  if (columnNames.length === 0) {
+    throw new Error("挿入するカラムがありません");
+  }
+
+  const qualifiedTable = qualifyTable(databaseName, tableName);
+  const columnsSql = columnNames.map((c) => quoteColumn(c)).join(", ");
+  const placeholders = columnNames.map(() => "?").join(", ");
+  const values = columnNames.map((c) => data[c]);
+
+  const [result] = await pool.query<ResultSetHeader>(
+    `INSERT INTO ${qualifiedTable} (${columnsSql}) VALUES (${placeholders})`,
+    values,
+  );
+  return { insertId: result.insertId || null, affectedRows: result.affectedRows };
+}
+
+/** 主キーを条件にレコードを更新する。主キーがないテーブルは MissingPrimaryKeyError を投げる。 */
+export async function updateRow(
+  databaseName: string,
+  tableName: string,
+  pkValues: Record<string, string>,
+  data: Record<string, unknown>,
+): Promise<{ affectedRows: number }> {
+  const pool = await getPoolForOperation(databaseName, "data-write");
+  await assertTableExists(pool, databaseName, tableName);
+
+  const pkColumns = await getPrimaryKeyColumns(databaseName, tableName);
+  if (pkColumns.length === 0) {
+    throw new MissingPrimaryKeyError(tableName);
+  }
+
+  const columnNames = Object.keys(data);
+  for (const column of [...columnNames, ...pkColumns]) {
+    await assertColumnExists(pool, databaseName, tableName, column);
+  }
+  if (columnNames.length === 0) {
+    throw new Error("更新するカラムがありません");
+  }
+
+  const qualifiedTable = qualifyTable(databaseName, tableName);
+  const setSql = columnNames.map((c) => `${quoteColumn(c)} = ?`).join(", ");
+  const whereSql = pkColumns.map((c) => `${quoteColumn(c)} = ?`).join(" AND ");
+  const params = [...columnNames.map((c) => data[c]), ...pkColumns.map((c) => pkValues[c])];
+
+  const [result] = await pool.query<ResultSetHeader>(
+    `UPDATE ${qualifiedTable} SET ${setSql} WHERE ${whereSql}`,
+    params,
+  );
+  return { affectedRows: result.affectedRows };
+}
+
+/**
+ * 主キーのリストを条件にレコードを削除する（単一・複数選択削除の両方に対応）。
+ * 常に主キーの完全一致条件のみで構成するため、条件なしDELETEにはなり得ない。
+ */
+export async function deleteRows(
+  databaseName: string,
+  tableName: string,
+  pkValuesList: Record<string, string>[],
+): Promise<{ affectedRows: number }> {
+  const pool = await getPoolForOperation(databaseName, "data-write");
+  await assertTableExists(pool, databaseName, tableName);
+
+  const pkColumns = await getPrimaryKeyColumns(databaseName, tableName);
+  if (pkColumns.length === 0) {
+    throw new MissingPrimaryKeyError(tableName);
+  }
+  if (pkValuesList.length === 0) {
+    return { affectedRows: 0 };
+  }
+  for (const column of pkColumns) {
+    await assertColumnExists(pool, databaseName, tableName, column);
+  }
+
+  const qualifiedTable = qualifyTable(databaseName, tableName);
+  const singleCondition = `(${pkColumns.map((c) => `${quoteColumn(c)} = ?`).join(" AND ")})`;
+  const whereSql = pkValuesList.map(() => singleCondition).join(" OR ");
+  const params = pkValuesList.flatMap((pkValues) => pkColumns.map((c) => pkValues[c]));
+
+  const [result] = await pool.query<ResultSetHeader>(
+    `DELETE FROM ${qualifiedTable} WHERE ${whereSql}`,
+    params,
+  );
+  return { affectedRows: result.affectedRows };
 }
