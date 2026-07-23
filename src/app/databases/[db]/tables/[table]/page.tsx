@@ -74,7 +74,7 @@ export default async function TableRowsPage({
   }
 
   return (
-    <main className="mx-auto flex max-w-5xl flex-1 flex-col gap-4 p-6">
+    <main className="mx-auto flex w-full min-w-0 max-w-5xl flex-1 flex-col gap-4 p-6">
       <div className="flex flex-col">
         <Link
           href={`/databases/${db}/tables`}
@@ -105,14 +105,14 @@ export default async function TableRowsPage({
         </p>
       )}
 
-      <div className="flex items-center justify-between gap-2">
-        <form className="flex flex-1 gap-2" action="" method="get">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+        <form className="flex min-w-0 flex-1 gap-2" action="" method="get">
           <input
             type="text"
             name="search"
             defaultValue={query.search ?? ""}
             placeholder="キーワード検索"
-            className="flex-1 rounded-md border px-3 py-2 text-sm"
+            className="min-w-0 flex-1 rounded-md border px-3 py-2 text-sm"
           />
           <button
             type="submit"
@@ -139,7 +139,7 @@ export default async function TableRowsPage({
         )}
       </div>
 
-      <form action={deleteRowsAction}>
+      <form action={deleteRowsAction} className="min-w-0">
         <input type="hidden" name="__db" value={db} />
         <input type="hidden" name="__table" value={table} />
 

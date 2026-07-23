@@ -22,7 +22,7 @@ export default async function SqlPage({ params }: { params: Promise<{ db: string
   });
 
   return (
-    <main className="mx-auto flex max-w-4xl flex-1 flex-col gap-6 p-6">
+    <main className="mx-auto flex w-full min-w-0 max-w-4xl flex-1 flex-col gap-6 p-6">
       <div className="flex flex-col">
         <Link
           href={`/databases/${db}/tables`}

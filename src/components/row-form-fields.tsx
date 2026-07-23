@@ -25,9 +25,9 @@ export function RowFormFields({
 
         return (
           <label key={column.name} className="flex flex-col gap-1 text-sm">
-            <span className="flex items-center gap-2">
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
               <span className="font-medium">{column.name}</span>
-              <span className="text-muted-foreground text-xs">
+              <span className="text-muted-foreground min-w-0 text-xs break-all">
                 {column.columnType}
                 {required ? "・必須" : ""}
               </span>

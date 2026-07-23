@@ -25,7 +25,7 @@ export default async function SettingsPage({
   const databases = await getDatabasesConfig();
 
   return (
-    <main className="mx-auto flex max-w-2xl flex-1 flex-col gap-6 p-6">
+    <main className="mx-auto flex w-full min-w-0 max-w-2xl flex-1 flex-col gap-6 p-6">
       <div className="flex flex-col gap-1">
         <Link href="/" className="text-muted-foreground text-sm hover:underline">
           ← データベース一覧

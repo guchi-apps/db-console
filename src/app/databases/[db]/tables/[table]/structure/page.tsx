@@ -46,7 +46,7 @@ export default async function TableStructurePage({
   }
 
   return (
-    <main className="mx-auto flex max-w-4xl flex-1 flex-col gap-6 p-6">
+    <main className="mx-auto flex w-full min-w-0 max-w-4xl flex-1 flex-col gap-6 p-6">
       <div className="flex flex-col">
         <Link
           href={`/databases/${db}/tables/${table}`}
@@ -79,7 +79,7 @@ export default async function TableStructurePage({
         </p>
       )}
 
-      <section className="flex flex-col gap-2">
+      <section className="flex min-w-0 flex-col gap-2">
         <h2 className="font-medium">カラム</h2>
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full text-sm">
@@ -170,7 +170,7 @@ export default async function TableStructurePage({
         )}
       </section>
 
-      <section className="flex flex-col gap-2">
+      <section className="flex min-w-0 flex-col gap-2">
         <h2 className="font-medium">インデックス</h2>
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full text-sm">

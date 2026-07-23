@@ -21,7 +21,7 @@ export default async function TablesPage({
   const canCreateTable = modeAtLeast(entry.mode, "schema-write");
 
   return (
-    <main className="mx-auto flex max-w-2xl flex-1 flex-col gap-4 p-6">
+    <main className="mx-auto flex w-full min-w-0 max-w-2xl flex-1 flex-col gap-4 p-6">
       <div className="flex flex-col">
         <Link href="/" className="text-muted-foreground text-sm hover:underline">
           ← データベース一覧

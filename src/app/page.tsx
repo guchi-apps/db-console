@@ -14,7 +14,7 @@ export default async function Home() {
   const databases = await getDatabasesConfig();
 
   return (
-    <main className="mx-auto flex max-w-2xl flex-1 flex-col gap-4 p-6">
+    <main className="mx-auto flex w-full min-w-0 max-w-2xl flex-1 flex-col gap-4 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">データベース一覧</h1>
         <Link href="/settings" className="text-muted-foreground text-sm hover:underline">

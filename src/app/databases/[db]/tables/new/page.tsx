@@ -26,7 +26,7 @@ export default async function NewTablePage({
   }
 
   return (
-    <main className="mx-auto flex max-w-4xl flex-1 flex-col gap-4 p-6">
+    <main className="mx-auto flex w-full min-w-0 max-w-4xl flex-1 flex-col gap-4 p-6">
       <Link
         href={`/databases/${db}/tables`}
         className="text-muted-foreground text-sm hover:underline"
@@ -41,7 +41,7 @@ export default async function NewTablePage({
         </p>
       )}
 
-      <form action={createTableAction} className="flex flex-col gap-4">
+      <form action={createTableAction} className="flex min-w-0 flex-col gap-4">
         <input type="hidden" name="__db" value={db} />
 
         <label className="flex flex-col gap-1 text-sm">

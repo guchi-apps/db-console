@@ -20,7 +20,7 @@ export function SqlForm({ db }: { db: string }) {
   const [state, formAction, isPending] = useActionState(executeSqlAction, initialState);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-w-0 flex-col gap-4">
       <form action={formAction} className="flex flex-col gap-2">
         <input type="hidden" name="__db" value={db} />
         <textarea
