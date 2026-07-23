@@ -101,7 +101,7 @@ export default async function NewTablePage({
         <div className="flex justify-end">
           <button
             type="submit"
-            className="rounded-md border px-4 py-2 text-sm hover:bg-accent"
+            className="min-h-11 rounded-md border px-4 py-2 text-sm hover:bg-accent"
           >
             テーブルを作成
           </button>

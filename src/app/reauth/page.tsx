@@ -32,7 +32,7 @@ export default async function ReauthPage({
           );
         }}
       >
-        <Button type="submit" size="lg">
+        <Button type="submit" size="lg" className="min-h-11 px-6">
           Googleで本人確認する
         </Button>
       </form>

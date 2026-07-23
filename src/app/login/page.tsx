@@ -16,7 +16,7 @@ export default function LoginPage() {
           await signIn("google");
         }}
       >
-        <Button type="submit" size="lg">
+        <Button type="submit" size="lg" className="min-h-11 px-6">
           Googleでログイン
         </Button>
       </form>

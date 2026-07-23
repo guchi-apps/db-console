@@ -35,7 +35,7 @@ export function SqlForm({ db }: { db: string }) {
           <button
             type="submit"
             disabled={isPending}
-            className="rounded-md border px-4 py-2 text-sm hover:bg-accent disabled:opacity-50"
+            className="min-h-11 rounded-md border px-4 py-2 text-sm hover:bg-accent disabled:opacity-50"
           >
             {isPending ? "実行中..." : "実行"}
           </button>

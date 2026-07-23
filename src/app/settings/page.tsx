@@ -72,7 +72,7 @@ export default async function SettingsPage({
               <div className="flex justify-end gap-3">
                 <button
                   type="submit"
-                  className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
+                  className="min-h-11 rounded-md border px-3 text-sm hover:bg-accent"
                 >
                   保存
                 </button>
@@ -82,7 +82,7 @@ export default async function SettingsPage({
               <input type="hidden" name="name" value={entry.name} />
               <ConfirmSubmitButton
                 confirmMessage={`${entry.label}（${entry.name}）を管理対象から削除しますか？`}
-                className="text-sm text-red-600 hover:underline"
+                className="flex min-h-11 items-center px-2 text-sm text-red-600 hover:underline"
               >
                 削除
               </ConfirmSubmitButton>
@@ -125,7 +125,7 @@ export default async function SettingsPage({
           <div className="flex justify-end">
             <button
               type="submit"
-              className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
+              className="min-h-11 rounded-md border px-3 text-sm hover:bg-accent"
             >
               追加
             </button>

@@ -162,7 +162,7 @@ export default async function TableStructurePage({
             </label>
             <button
               type="submit"
-              className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
+              className="min-h-11 rounded-md border px-3 text-sm hover:bg-accent"
             >
               カラム追加
             </button>
@@ -263,7 +263,7 @@ export default async function TableStructurePage({
             </label>
             <button
               type="submit"
-              className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
+              className="min-h-11 rounded-md border px-3 text-sm hover:bg-accent"
             >
               インデックス追加
             </button>
@@ -291,7 +291,7 @@ export default async function TableStructurePage({
             <div className="flex justify-end">
               <button
                 type="submit"
-                className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
+                className="min-h-11 rounded-md border px-3 text-sm hover:bg-accent"
               >
                 名前を変更
               </button>

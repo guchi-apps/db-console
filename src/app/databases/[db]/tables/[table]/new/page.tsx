@@ -48,7 +48,7 @@ export default async function NewRowPage({
         <div className="flex justify-end">
           <button
             type="submit"
-            className="rounded-md border px-4 py-2 text-sm hover:bg-accent"
+            className="min-h-11 rounded-md border px-4 py-2 text-sm hover:bg-accent"
           >
             追加
           </button>
