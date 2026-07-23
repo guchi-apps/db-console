@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { getDatabasesConfig } from "@/lib/config";
+import { requireSessionForPage } from "@/lib/session";
 
 const MODE_LABEL: Record<string, string> = {
   "read-only": "閲覧のみ",
@@ -8,7 +9,8 @@ const MODE_LABEL: Record<string, string> = {
   "schema-write": "構造変更可",
 };
 
-export default function Home() {
+export default async function Home() {
+  await requireSessionForPage();
   const databases = getDatabasesConfig();
 
   return (

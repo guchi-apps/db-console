@@ -3,12 +3,14 @@ import { notFound } from "next/navigation";
 
 import { getTableColumns, getTableIndexes } from "@/lib/introspection";
 import { IdentifierNotFoundError } from "@/lib/identifier";
+import { requireSessionForPage } from "@/lib/session";
 
 export default async function TableStructurePage({
   params,
 }: {
   params: Promise<{ db: string; table: string }>;
 }) {
+  await requireSessionForPage();
   const { db, table } = await params;
 
   let columns, indexes;

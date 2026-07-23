@@ -2,11 +2,15 @@ import { NextResponse } from "next/server";
 
 import { toErrorResponse } from "@/lib/api-error";
 import { getTableRows } from "@/lib/introspection";
+import { requireSessionForApi } from "@/lib/session";
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ db: string; table: string }> },
 ) {
+  const { response } = await requireSessionForApi();
+  if (response) return response;
+
   const { db, table } = await params;
   const searchParams = new URL(request.url).searchParams;
 

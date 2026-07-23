@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getDatabaseEntry } from "@/lib/config";
 import { getTableRows } from "@/lib/introspection";
 import { IdentifierNotFoundError } from "@/lib/identifier";
+import { requireSessionForPage } from "@/lib/session";
 
 function formatCellValue(value: unknown): string {
   if (value === null || value === undefined) return "NULL";
@@ -25,6 +26,7 @@ export default async function TableRowsPage({
     search?: string;
   }>;
 }) {
+  await requireSessionForPage();
   const { db, table } = await params;
   const query = await searchParams;
 

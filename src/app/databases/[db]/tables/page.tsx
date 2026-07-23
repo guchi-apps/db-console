@@ -3,12 +3,14 @@ import { notFound } from "next/navigation";
 
 import { getDatabaseEntry } from "@/lib/config";
 import { listTables } from "@/lib/introspection";
+import { requireSessionForPage } from "@/lib/session";
 
 export default async function TablesPage({
   params,
 }: {
   params: Promise<{ db: string }>;
 }) {
+  await requireSessionForPage();
   const { db } = await params;
   const entry = getDatabaseEntry(db);
   if (!entry) {
