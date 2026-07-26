@@ -20,17 +20,28 @@ export default async function SettingsPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  await requireSessionForPage();
+  const session = await requireSessionForPage();
   const { error } = await searchParams;
   const databases = await getDatabasesConfig();
 
   return (
     <main className="mx-auto flex w-full min-w-0 max-w-2xl flex-1 flex-col gap-6 p-6">
       <div className="flex flex-col gap-1">
-        <Link href="/" className="text-muted-foreground text-sm hover:underline">
-          ← データベース一覧
-        </Link>
+        <div className="flex items-center justify-between">
+          <Link href="/" className="text-muted-foreground text-sm hover:underline">
+            ← データベース一覧
+          </Link>
+          <form action="/auth/signout" method="post">
+            <button
+              type="submit"
+              className="text-muted-foreground min-h-11 text-sm hover:underline"
+            >
+              ログアウト
+            </button>
+          </form>
+        </div>
         <h1 className="text-xl font-semibold">設定: 管理対象データベース</h1>
+        <p className="text-muted-foreground text-sm">{session.user.email} でログイン中</p>
         <p className="text-muted-foreground text-sm">
           ここで管理するのは表示名・操作モードの論理的な設定のみです。実際にDBへ接続・操作できるかは
           MariaDB側の権限（db_console_data / db_console_schema ユーザーへのGRANT）に依存するため、

@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-const PUBLIC_PATH_PREFIXES = ["/login", "/auth/callback"];
+// /auth 配下（callback・signout）は未ログイン状態で叩かれても安全なため素通りさせる。
+const PUBLIC_PATH_PREFIXES = ["/login", "/auth"];
 
 /**
  * リクエストごとに Supabase のアクセストークンをリフレッシュし、更新後のCookieを
@@ -19,7 +20,7 @@ export async function proxy(request: NextRequest) {
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
       cookies: {
         getAll() {
