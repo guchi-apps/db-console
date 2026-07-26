@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // サーバーデプロイ用の設定ファイル（PM2 ecosystem config等）。CJS前提でNode.jsが
+    // 直接読み込むため、アプリ本体のTypeScript向けlintルールの対象外とする。
+    "deploy/**",
   ]),
 ]);
 

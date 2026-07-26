@@ -13,10 +13,8 @@ concurrency:
 env:
   # ビルド・テストに必要な最小限のプレースホルダー環境変数（本番の1Password参照は不要）
   DATABASE_URL: mysql://root@127.0.0.1:3306/db_console_test
-  GOOGLE_CLIENT_ID: dummy
-  GOOGLE_CLIENT_SECRET: dummy
-  AUTH_SECRET: dummy-secret-for-ci-only-not-real
-  AUTH_URL: https://db.gucchii.com
+  NEXT_PUBLIC_SUPABASE_URL: https://dummy-project.supabase.co
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: dummy-publishable-key-for-ci-only
   ALLOWED_EMAILS: test@example.com
   DB_HOST: 127.0.0.1
   DB_PORT: 3306

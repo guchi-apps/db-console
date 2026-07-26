@@ -5,6 +5,8 @@ import { isEmailAllowed } from "@/lib/allowed-emails";
 import { sanitizeReturnTo } from "@/lib/return-to";
 import { db } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 /**
  * Supabase の Google OAuth コールバック。
  * 通常ログインと `/reauth`（?reauth=1）からの再認証完了の両方をここで受ける。
