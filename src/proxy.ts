@@ -48,7 +48,11 @@ export async function proxy(request: NextRequest) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
     }
-    return NextResponse.redirect(new URL("/login", request.url));
+    // request.url はリバースプロキシ配下だと内部アドレス（localhost:PORT）を
+    // 指すことがあるため、Host + X-Forwarded-Proto から組み立てる。
+    const host = request.headers.get("host");
+    const protocol = request.headers.get("x-forwarded-proto") ?? "http";
+    return NextResponse.redirect(`${protocol}://${host}/login`);
   }
 
   return supabaseResponse;
