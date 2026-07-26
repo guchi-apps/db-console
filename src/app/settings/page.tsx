@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { getDatabasesConfig } from "@/lib/config";
 import { requireSessionForPage } from "@/lib/session";
+import { listRegistrableDatabaseNames } from "@/lib/target-db";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import {
   createManagedDatabaseAction,
@@ -23,6 +24,10 @@ export default async function SettingsPage({
   const session = await requireSessionForPage();
   const { error } = await searchParams;
   const databases = await getDatabasesConfig();
+  const registeredNames = new Set(databases.map((entry) => entry.name));
+  const registrableNames = (await listRegistrableDatabaseNames()).filter(
+    (name) => !registeredNames.has(name),
+  );
 
   return (
     <main className="mx-auto flex w-full min-w-0 max-w-2xl flex-1 flex-col gap-6 p-6">
@@ -109,39 +114,56 @@ export default async function SettingsPage({
 
       <section className="flex flex-col gap-2 rounded-lg border p-4">
         <h2 className="font-medium">新規登録</h2>
-        <form action={createManagedDatabaseAction} className="flex flex-col gap-2">
-          <input
-            name="name"
-            placeholder="DB名（例: app_example）"
-            required
-            className="rounded-md border px-3 py-2 text-sm"
-          />
-          <input
-            name="label"
-            placeholder="表示名（例: 経費管理）"
-            required
-            className="rounded-md border px-3 py-2 text-sm"
-          />
-          <select
-            name="mode"
-            defaultValue="read-only"
-            className="rounded-md border px-3 py-2 text-sm"
-          >
-            {MODE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              className="min-h-11 rounded-md border px-3 text-sm hover:bg-accent"
+        {registrableNames.length === 0 ? (
+          <p className="text-muted-foreground text-sm">
+            db_console_data / db_console_schema ロールがGRANTされている、未登録のDBが見つかりません。
+            先にMariaDB側でGRANTを行ってください。
+          </p>
+        ) : (
+          <form action={createManagedDatabaseAction} className="flex flex-col gap-2">
+            <select
+              name="name"
+              required
+              defaultValue=""
+              className="rounded-md border px-3 py-2 text-sm"
+              aria-label="DB名"
             >
-              追加
-            </button>
-          </div>
-        </form>
+              <option value="" disabled>
+                DBを選択
+              </option>
+              {registrableNames.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+            <input
+              name="label"
+              placeholder="表示名（例: 経費管理）"
+              required
+              className="rounded-md border px-3 py-2 text-sm"
+            />
+            <select
+              name="mode"
+              defaultValue="read-only"
+              className="rounded-md border px-3 py-2 text-sm"
+            >
+              {MODE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                className="min-h-11 rounded-md border px-3 text-sm hover:bg-accent"
+              >
+                追加
+              </button>
+            </div>
+          </form>
+        )}
       </section>
     </main>
   );
