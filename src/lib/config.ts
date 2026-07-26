@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 
 // アプリ側で操作対象にすることを絶対に許可しないシステムDB。
 // 設定画面から追加しようとしても起動時ではなく登録時に拒否する。
-const FORBIDDEN_DATABASE_NAMES = new Set([
+export const FORBIDDEN_DATABASE_NAMES = new Set([
   "mysql",
   "information_schema",
   "performance_schema",

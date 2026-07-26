@@ -1,6 +1,6 @@
-import mysql, { type Pool } from "mysql2/promise";
+import mysql, { type Pool, type RowDataPacket } from "mysql2/promise";
 
-import { getDatabaseEntry, modeAtLeast, type DatabaseMode } from "@/lib/config";
+import { FORBIDDEN_DATABASE_NAMES, getDatabaseEntry, modeAtLeast, type DatabaseMode } from "@/lib/config";
 
 // 管理対象DB（asset-manager, car-care, wordpress 等）への接続専用プール。
 // db-console 自身のメタデータDB（app_db_console）は lib/db.ts の Prisma 経由でアクセスする。
@@ -82,4 +82,37 @@ export async function getPoolForOperation(
     throw new ModeNotAllowedError(databaseName, requiredMode);
   }
   return requiredMode === "schema-write" ? getSchemaPool() : getDataPool();
+}
+
+async function querySchemaNames(pool: Pool): Promise<string[]> {
+  try {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      "SELECT schema_name AS schema_name FROM information_schema.schemata",
+    );
+    return rows.map((row) => row.schema_name as string);
+  } catch {
+    // ロール未設定・接続不可などで失敗しても、設定画面自体は表示できるようにする。
+    return [];
+  }
+}
+
+/**
+ * db_console_data / db_console_schema ロールに GRANT 済みで、まだ ManagedDatabase に
+ * 未登録のDB名一覧を返す（設定画面の新規登録フォームの選択肢用）。
+ * MariaDBは `information_schema.schemata` を、接続ユーザーが権限を持つDBだけに絞って
+ * 返すため、ここでの結果は「GRANT済みだが未登録」の候補と一致する。
+ */
+export async function listRegistrableDatabaseNames(): Promise<string[]> {
+  const [dataNames, schemaNames] = await Promise.all([
+    querySchemaNames(getDataPool()),
+    querySchemaNames(getSchemaPool()),
+  ]);
+
+  const names = new Set([...dataNames, ...schemaNames]);
+  for (const forbidden of FORBIDDEN_DATABASE_NAMES) {
+    names.delete(forbidden);
+  }
+  names.delete(process.env.DB_NAME ?? "");
+
+  return [...names].sort();
 }

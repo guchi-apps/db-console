@@ -38,6 +38,11 @@ export default async function Home() {
             </Link>
           </li>
         ))}
+        {databases.length === 0 && (
+          <li className="text-muted-foreground text-sm">
+            管理対象データベースが登録されていません。「設定」から登録してください。
+          </li>
+        )}
       </ul>
     </main>
   );
