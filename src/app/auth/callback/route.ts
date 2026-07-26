@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isEmailAllowed } from "@/lib/allowed-emails";
 import { sanitizeReturnTo } from "@/lib/return-to";
+import { getRequestOrigin } from "@/lib/request-origin";
 import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,8 @@ export const dynamic = "force-dynamic";
  * 通常ログインと `/reauth`（?reauth=1）からの再認証完了の両方をここで受ける。
  */
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
+  const origin = await getRequestOrigin();
   const code = searchParams.get("code");
   const returnTo = sanitizeReturnTo(searchParams.get("returnTo"));
   const isReauth = searchParams.get("reauth") === "1";
