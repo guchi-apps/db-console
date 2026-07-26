@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
 
 import { createClient } from "@/lib/supabase/server";
+import { getRequestOrigin } from "@/lib/request-origin";
 import { Button } from "@/components/ui/button";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -35,7 +35,7 @@ export default async function LoginPage({
       <form
         action={async () => {
           "use server";
-          const origin = (await headers()).get("origin");
+          const origin = await getRequestOrigin();
           const supabase = await createClient();
           const { data, error } = await supabase.auth.signInWithOAuth({
             provider: "google",

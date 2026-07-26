@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireSessionForPage } from "@/lib/session";
 import { sanitizeReturnTo } from "@/lib/return-to";
+import { getRequestOrigin } from "@/lib/request-origin";
 import { Button } from "@/components/ui/button";
 
 export default async function ReauthPage({
@@ -28,7 +28,7 @@ export default async function ReauthPage({
       <form
         action={async () => {
           "use server";
-          const origin = (await headers()).get("origin");
+          const origin = await getRequestOrigin();
           const redirectTo = `${origin}/auth/callback?reauth=1&returnTo=${encodeURIComponent(safeReturnTo)}`;
           const supabase = await createClient();
           const { data, error } = await supabase.auth.signInWithOAuth({
