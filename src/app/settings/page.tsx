@@ -3,7 +3,7 @@ import Link from "next/link";
 import { getDatabasesConfig } from "@/lib/config";
 import { requireSessionForPage } from "@/lib/session";
 import { listRegistrableDatabaseNames } from "@/lib/target-db";
-import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
+import { DeleteManagedDatabaseButton } from "@/components/delete-managed-database-button";
 import {
   createManagedDatabaseAction,
   deleteManagedDatabaseAction,
@@ -60,11 +60,17 @@ export default async function SettingsPage({
         </p>
       )}
 
+      <h2 className="font-medium">管理対象データベース</h2>
+
       <ul className="flex flex-col gap-3">
         {databases.map((entry) => (
           <li key={entry.name} className="flex flex-col gap-3 rounded-lg border p-4">
             <span className="text-muted-foreground text-sm">{entry.name}</span>
-            <form action={updateManagedDatabaseAction} className="flex flex-col gap-2">
+            <form
+              id={`update-db-${entry.name}`}
+              action={updateManagedDatabaseAction}
+              className="flex flex-col gap-2"
+            >
               <input type="hidden" name="name" value={entry.name} />
               <input
                 name="label"
@@ -73,8 +79,11 @@ export default async function SettingsPage({
                 className="rounded-md border px-3 py-2 text-sm"
                 aria-label="表示名"
               />
+            </form>
+            <div className="flex justify-between gap-3">
               <select
                 name="mode"
+                form={`update-db-${entry.name}`}
                 defaultValue={entry.mode}
                 className="rounded-md border px-3 py-2 text-sm"
                 aria-label="操作モード"
@@ -85,24 +94,21 @@ export default async function SettingsPage({
                   </option>
                 ))}
               </select>
-              <div className="flex justify-end gap-3">
+              <div className="flex gap-3">
                 <button
                   type="submit"
+                  form={`update-db-${entry.name}`}
                   className="min-h-11 rounded-md border px-3 text-sm hover:bg-accent"
                 >
                   保存
                 </button>
+                <DeleteManagedDatabaseButton
+                  action={deleteManagedDatabaseAction}
+                  name={entry.name}
+                  label={entry.label}
+                />
               </div>
-            </form>
-            <form action={deleteManagedDatabaseAction} className="flex justify-end">
-              <input type="hidden" name="name" value={entry.name} />
-              <ConfirmSubmitButton
-                confirmMessage={`${entry.label}（${entry.name}）を管理対象から削除しますか？`}
-                className="flex min-h-11 items-center px-2 text-sm text-red-600 hover:underline"
-              >
-                削除
-              </ConfirmSubmitButton>
-            </form>
+            </div>
           </li>
         ))}
         {databases.length === 0 && (

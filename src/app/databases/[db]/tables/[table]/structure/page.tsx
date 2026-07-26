@@ -6,13 +6,15 @@ import { getTableColumns, getTableIndexes } from "@/lib/introspection";
 import { IdentifierNotFoundError } from "@/lib/identifier";
 import { requireSessionForPage } from "@/lib/session";
 import { COLUMN_TYPE_OPTIONS } from "@/lib/column-types";
-import { ColumnTypeSelectFields } from "@/components/column-type-fields";
+import { ColumnEditFields, ColumnTypeSelectFields } from "@/components/column-type-fields";
+import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { renameTableAction } from "../schema-actions";
 import {
   addColumnAction,
   addIndexAction,
   dropColumnAction,
   dropIndexAction,
+  modifyColumnAction,
 } from "../column-actions";
 
 export default async function TableStructurePage({
@@ -54,18 +56,18 @@ export default async function TableStructurePage({
         >
           ← {table} のレコード一覧
         </Link>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-1">
           <h1 className="text-xl font-semibold">{table} の構造</h1>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-x-3 gap-y-1">
             <Link
               href={`/api/databases/${db}/tables/${table}/export/sql`}
-              className="text-muted-foreground text-sm hover:underline"
+              className="text-primary text-sm whitespace-nowrap underline underline-offset-2 hover:no-underline"
             >
               構造をSQL出力
             </Link>
             <Link
               href={`/api/databases/${db}/tables/${table}/export/sql?withData=1`}
-              className="text-muted-foreground text-sm hover:underline"
+              className="text-primary text-sm whitespace-nowrap underline underline-offset-2 hover:no-underline"
             >
               構造+データをSQL出力
             </Link>
@@ -130,6 +132,39 @@ export default async function TableStructurePage({
             </tbody>
           </table>
         </div>
+
+        {canManageSchema && (
+          <div className="flex flex-col gap-2">
+            {columns.map((column) => (
+              <details key={column.name} className="rounded-md border p-2">
+                <summary className="cursor-pointer text-sm font-medium">
+                  {column.name} を編集
+                </summary>
+                <form
+                  action={modifyColumnAction}
+                  className="mt-2 flex flex-col items-end gap-2"
+                >
+                  <input type="hidden" name="__db" value={db} />
+                  <input type="hidden" name="__table" value={table} />
+                  <input type="hidden" name="columnName" value={column.name} />
+                  <ColumnEditFields
+                    column={column}
+                    options={COLUMN_TYPE_OPTIONS}
+                    otherColumnNames={columns
+                      .filter((c) => c.name !== column.name)
+                      .map((c) => c.name)}
+                  />
+                  <ConfirmSubmitButton
+                    confirmMessage={`${column.name} を変更します。型を狭めるとデータが失われる場合があります。よろしいですか？`}
+                    className="min-h-11 rounded-md border px-3 text-sm hover:bg-accent"
+                  >
+                    保存
+                  </ConfirmSubmitButton>
+                </form>
+              </details>
+            ))}
+          </div>
+        )}
 
         {canManageSchema && (
           <form

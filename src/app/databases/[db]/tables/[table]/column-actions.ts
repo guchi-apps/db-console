@@ -4,8 +4,17 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
 import { requireUserId } from "@/lib/session";
-import { addColumn, addIndex, addPrimaryKey, dropColumn, dropIndex } from "@/lib/introspection";
-import { buildSqlType } from "@/lib/column-types";
+import {
+  addColumn,
+  addIndex,
+  addPrimaryKey,
+  dropColumn,
+  dropIndex,
+  getTableColumns,
+  modifyColumn,
+  type ColumnModificationInput,
+} from "@/lib/introspection";
+import { buildSqlType, KEEP_CURRENT_TYPE_KEY } from "@/lib/column-types";
 import { isReauthValid } from "@/lib/reauth";
 import { writeAuditLog } from "@/lib/audit";
 
@@ -42,6 +51,72 @@ export async function addColumnAction(formData: FormData): Promise<void> {
     await writeAuditLog({
       userId,
       action: "COLUMN_ADD",
+      databaseName: db,
+      tableName: table,
+      objectName: columnName,
+      status: "FAILURE",
+      errorMessage: message,
+    });
+    redirect(`${path}?error=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath(path);
+  redirect(path);
+}
+
+export async function modifyColumnAction(formData: FormData): Promise<void> {
+  const userId = await requireUserId();
+  const db = String(formData.get("__db") ?? "");
+  const table = String(formData.get("__table") ?? "");
+  const path = structurePath(db, table);
+
+  const columnName = String(formData.get("columnName") ?? "");
+  const typeKey = String(formData.get("typeKey") ?? "");
+  const param1 = String(formData.get("param1") ?? "");
+  const param2 = String(formData.get("param2") ?? "");
+  const nullable = formData.get("nullable") === "on";
+  const defaultValue = String(formData.get("defaultValue") ?? "").trim();
+  const comment = String(formData.get("comment") ?? "").trim();
+  const positionKind = String(formData.get("positionKind") ?? "keep");
+  const positionAfter = String(formData.get("positionAfter") ?? "");
+
+  try {
+    let sqlType: string;
+    if (typeKey === KEEP_CURRENT_TYPE_KEY) {
+      // クライアントから送られた型文字列は信用せず、サーバー側で現在値を再取得する。
+      const columns = await getTableColumns(db, table);
+      const current = columns.find((c) => c.name === columnName);
+      if (!current) {
+        throw new Error(`カラムが見つかりません: ${columnName}`);
+      }
+      sqlType = current.columnType;
+    } else {
+      sqlType = buildSqlType(typeKey, param1, param2);
+    }
+
+    const position: ColumnModificationInput["position"] =
+      positionKind === "first" ? "first" : positionKind === "after" ? { after: positionAfter } : undefined;
+
+    await modifyColumn(db, table, columnName, {
+      sqlType,
+      nullable,
+      defaultValue: defaultValue || undefined,
+      comment: comment || undefined,
+      position,
+    });
+    await writeAuditLog({
+      userId,
+      action: "COLUMN_ALTER",
+      databaseName: db,
+      tableName: table,
+      objectName: columnName,
+      status: "SUCCESS",
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "カラム編集に失敗しました";
+    await writeAuditLog({
+      userId,
+      action: "COLUMN_ALTER",
       databaseName: db,
       tableName: table,
       objectName: columnName,
