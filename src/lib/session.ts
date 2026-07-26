@@ -17,7 +17,8 @@ export type Session = {
   supabaseSessionId: string;
 };
 
-async function resolveSession(): Promise<Session | null> {
+/** 現在のセッションを取得する（未認証ならnull、リダイレクトしない）。 */
+export async function getSession(): Promise<Session | null> {
   const supabase = await createClient();
   const { data } = await supabase.auth.getClaims();
   const claims = data?.claims;
@@ -48,7 +49,7 @@ async function resolveSession(): Promise<Session | null> {
 
 /** ページ（Server Component）用。未認証なら /login へリダイレクトする。 */
 export async function requireSessionForPage(): Promise<Session> {
-  const session = await resolveSession();
+  const session = await getSession();
   if (!session) {
     redirect("/login");
   }
@@ -59,7 +60,7 @@ export async function requireSessionForPage(): Promise<Session> {
 export async function requireSessionForApi(): Promise<
   { session: Session; response?: undefined } | { session?: undefined; response: NextResponse }
 > {
-  const session = await resolveSession();
+  const session = await getSession();
   if (!session) {
     return {
       response: NextResponse.json({ error: "認証が必要です" }, { status: 401 }),
@@ -70,7 +71,7 @@ export async function requireSessionForApi(): Promise<
 
 /** Server Action 用。未認証なら Error を投げる（呼び出し側で catch する）。 */
 export async function requireUserId(): Promise<string> {
-  const session = await resolveSession();
+  const session = await getSession();
   if (!session) {
     throw new Error("認証が必要です");
   }
