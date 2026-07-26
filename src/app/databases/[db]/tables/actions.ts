@@ -3,20 +3,12 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
-import { auth } from "@/auth";
+import { requireUserId } from "@/lib/session";
 import { createTable, type CreateTableColumnInput } from "@/lib/introspection";
 import { buildSqlType } from "@/lib/column-types";
 import { writeAuditLog } from "@/lib/audit";
 
 const MAX_COLUMN_ROWS = 8;
-
-async function requireUserId(): Promise<string> {
-  const session = await auth();
-  if (!session?.user) {
-    throw new Error("認証が必要です");
-  }
-  return session.user.id;
-}
 
 export async function createTableAction(formData: FormData): Promise<void> {
   const userId = await requireUserId();

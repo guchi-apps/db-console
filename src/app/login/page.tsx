@@ -1,4 +1,7 @@
-import { signIn } from "@/auth";
+import { redirect } from "next/navigation";
+import { headers } from "next/headers";
+
+import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 
 export default function LoginPage() {
@@ -13,7 +16,16 @@ export default function LoginPage() {
       <form
         action={async () => {
           "use server";
-          await signIn("google");
+          const origin = (await headers()).get("origin");
+          const supabase = await createClient();
+          const { data, error } = await supabase.auth.signInWithOAuth({
+            provider: "google",
+            options: { redirectTo: `${origin}/auth/callback` },
+          });
+          if (error || !data.url) {
+            redirect("/login?error=signin_failed");
+          }
+          redirect(data.url);
         }}
       >
         <Button type="submit" size="lg" className="min-h-11 px-6">

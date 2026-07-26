@@ -1,6 +1,9 @@
-import { signIn } from "@/auth";
+import { redirect } from "next/navigation";
+import { headers } from "next/headers";
+
+import { createClient } from "@/lib/supabase/server";
 import { requireSessionForPage } from "@/lib/session";
-import { sanitizeReturnTo } from "@/lib/reauth";
+import { sanitizeReturnTo } from "@/lib/return-to";
 import { Button } from "@/components/ui/button";
 
 export default async function ReauthPage({
@@ -25,11 +28,20 @@ export default async function ReauthPage({
       <form
         action={async () => {
           "use server";
-          await signIn(
-            "google",
-            { redirectTo: `/reauth/complete?returnTo=${encodeURIComponent(safeReturnTo)}` },
-            { prompt: "login" },
-          );
+          const origin = (await headers()).get("origin");
+          const redirectTo = `${origin}/auth/callback?reauth=1&returnTo=${encodeURIComponent(safeReturnTo)}`;
+          const supabase = await createClient();
+          const { data, error } = await supabase.auth.signInWithOAuth({
+            provider: "google",
+            options: {
+              redirectTo,
+              queryParams: { prompt: "select_account" },
+            },
+          });
+          if (error || !data.url) {
+            redirect(`/reauth?returnTo=${encodeURIComponent(safeReturnTo)}&error=signin_failed`);
+          }
+          redirect(data.url);
         }}
       >
         <Button type="submit" size="lg" className="min-h-11 px-6">

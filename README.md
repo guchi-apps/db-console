@@ -1,7 +1,12 @@
 # db-console
 
-スマートフォン向けMariaDB管理画面。Next.js App Router + NextAuth v5（Google認証）+ Prisma + mysql2で構成。
-詳細な要件・実装計画は [issue #1](https://github.com/m-guchi/db-console/issues/1) を参照。
+スマートフォン向けMariaDB管理画面。Next.js App Router + Supabase Auth（Google認証）+ Prisma + mysql2で構成。
+詳細な要件・実装計画は [issue #1](https://github.com/m-guchi/db-console/issues/1) / [issue #2](https://github.com/m-guchi/db-console/issues/2) を参照。
+
+ログインには Supabase プロジェクト（複数アプリ共通、Google Provider を有効化したもの）が必要。
+`.env.local` に `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` を設定し、
+Supabaseダッシュボードの Authentication → URL Configuration の Redirect URLs に
+`http://localhost:3000/auth/callback`（本番は `https://<ドメイン>/auth/callback`）を登録すること。
 
 ## セットアップ
 

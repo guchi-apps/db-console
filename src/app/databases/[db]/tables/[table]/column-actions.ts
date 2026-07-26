@@ -3,19 +3,11 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
-import { auth } from "@/auth";
+import { requireUserId } from "@/lib/session";
 import { addColumn, addIndex, addPrimaryKey, dropColumn, dropIndex } from "@/lib/introspection";
 import { buildSqlType } from "@/lib/column-types";
 import { isReauthValid } from "@/lib/reauth";
 import { writeAuditLog } from "@/lib/audit";
-
-async function requireUserId(): Promise<string> {
-  const session = await auth();
-  if (!session?.user) {
-    throw new Error("認証が必要です");
-  }
-  return session.user.id;
-}
 
 function structurePath(db: string, table: string): string {
   return `/databases/${db}/tables/${table}/structure`;

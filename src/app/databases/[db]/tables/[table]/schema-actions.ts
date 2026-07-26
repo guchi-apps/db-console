@@ -3,18 +3,10 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
-import { auth } from "@/auth";
+import { requireUserId } from "@/lib/session";
 import { dropTable, renameTable, truncateTable } from "@/lib/introspection";
 import { isReauthValid } from "@/lib/reauth";
 import { writeAuditLog } from "@/lib/audit";
-
-async function requireUserId(): Promise<string> {
-  const session = await auth();
-  if (!session?.user) {
-    throw new Error("認証が必要です");
-  }
-  return session.user.id;
-}
 
 export async function renameTableAction(formData: FormData): Promise<void> {
   const userId = await requireUserId();

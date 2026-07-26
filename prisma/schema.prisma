@@ -6,64 +6,37 @@ datasource db {
   provider = "mysql"
 }
 
-// --- NextAuth.js / Auth.js v5（database セッション戦略） ---
-
-model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  type              String
-  provider          String
-  providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String? @db.Text
-  session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([provider, providerAccountId])
-}
-
-// database セッション戦略のため、無操作タイムアウト・再認証状態もこのテーブルで管理する。
-// lastActivityAt / reauthVerifiedAt は NextAuth アダプタ本体は関知せず、
-// ミドルウェア（src/lib/reauth.ts 等）から直接 Prisma 経由で更新・参照する。
-model Session {
-  id               String    @id @default(cuid())
-  sessionToken     String    @unique
-  userId           String
-  expires          DateTime
-  lastActivityAt   DateTime  @default(now())
-  reauthVerifiedAt DateTime?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model VerificationToken {
-  identifier String
-  token      String
-  expires    DateTime
-
-  @@unique([identifier, token])
-}
+// --- Supabase Auth（Google認証、JWT検証はアプリ側で都度実施） ---
 
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  emailVerified DateTime?
-  name          String?
-  image         String?
-  lastLoginAt   DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id             String    @id @default(cuid())
+  supabaseUserId String?   @unique
+  email          String    @unique
+  name           String?
+  image          String?
+  lastLoginAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  accounts        Account[]
-  sessions        Session[]
-  auditLogs       AuditLog[]
-  sqlHistories    SqlHistory[]
-  userPreference  UserPreference?
+  appSessions    AppSession[]
+  auditLogs      AuditLog[]
+  sqlHistories   SqlHistory[]
+  userPreference UserPreference?
+}
+
+// Supabase の JWT には含まれない、db-console 独自のセッション管理情報
+// （8時間絶対タイムアウト・5分間の再認証有効時間・将来の無操作タイムアウト用）。
+// Supabase の access token に含まれる session_id と1対1で対応する。
+model AppSession {
+  id                String    @id @default(cuid())
+  supabaseSessionId String    @unique
+  userId            String
+  loginAt           DateTime  @default(now())
+  lastActivityAt    DateTime  @default(now())
+  reauthVerifiedAt  DateTime?
+  createdAt         DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // --- db-console 独自データ ---

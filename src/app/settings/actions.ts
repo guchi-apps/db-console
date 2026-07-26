@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
-import { auth } from "@/auth";
+import { requireUserId } from "@/lib/session";
 import {
   createDatabaseEntry,
   deleteDatabaseEntry,
@@ -11,14 +11,6 @@ import {
   type DatabaseMode,
 } from "@/lib/config";
 import { writeAuditLog } from "@/lib/audit";
-
-async function requireUserId(): Promise<string> {
-  const session = await auth();
-  if (!session?.user) {
-    throw new Error("認証が必要です");
-  }
-  return session.user.id;
-}
 
 function redirectWithError(message: string): never {
   redirect(`/settings?error=${encodeURIComponent(message)}`);

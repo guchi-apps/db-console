@@ -1,6 +1,6 @@
 "use server";
 
-import { auth } from "@/auth";
+import { requireUserId } from "@/lib/session";
 import { executeSql, type SqlExecutionResult } from "@/lib/sql-execute";
 import { db as prismaDb } from "@/lib/db";
 
@@ -14,8 +14,10 @@ export async function executeSqlAction(
   prevState: SqlActionState,
   formData: FormData,
 ): Promise<SqlActionState> {
-  const session = await auth();
-  if (!session?.user) {
+  let userId: string;
+  try {
+    userId = await requireUserId();
+  } catch {
     return { sql: prevState.sql, error: "認証が必要です" };
   }
 
@@ -27,7 +29,7 @@ export async function executeSqlAction(
     const result = await executeSql(databaseName, sql);
     await prismaDb.sqlHistory.create({
       data: {
-        userId: session.user.id,
+        userId,
         databaseName,
         sqlText: sql,
         queryType: result.queryType,
@@ -41,7 +43,7 @@ export async function executeSqlAction(
     const message = error instanceof Error ? error.message : "SQL実行に失敗しました";
     await prismaDb.sqlHistory.create({
       data: {
-        userId: session.user.id,
+        userId,
         databaseName,
         sqlText: sql,
         queryType: "OTHER",

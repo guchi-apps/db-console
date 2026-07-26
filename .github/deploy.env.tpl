@@ -15,11 +15,9 @@ DB_NAME=op://apps/db-console/db-name
 MIGRATE_DB_USER=op://apps/DB/migrate-user
 MIGRATE_DB_PASSWORD=op://apps/DB/migrate-password
 
-# Auth / App
-AUTH_URL=op://apps/db-console/auth-url
-AUTH_SECRET=op://apps/db-console/auth-secret
-GOOGLE_CLIENT_ID=op://apps/db-console/google-client-id
-GOOGLE_CLIENT_SECRET=op://apps/db-console/google-client-secret
+# Auth / App（Supabaseは複数アプリ共通プロジェクトのため Vault は共有アイテムを参照）
+NEXT_PUBLIC_SUPABASE_URL=op://apps/Supabase/url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=op://apps/Supabase/anon-key
 ALLOWED_EMAILS=op://apps/db-console/allowed-emails
 
 # 管理対象DBへのロール（VPS側で作成するdb_console_data/db_console_schema）

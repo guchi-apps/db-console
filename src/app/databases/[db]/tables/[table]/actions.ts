@@ -3,18 +3,10 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
-import { auth } from "@/auth";
+import { requireUserId } from "@/lib/session";
 import { getTableColumns, insertRow, updateRow, deleteRows } from "@/lib/introspection";
 import { buildRowDataFromForm } from "@/lib/row-form";
 import { writeAuditLog } from "@/lib/audit";
-
-async function requireUserId(): Promise<string> {
-  const session = await auth();
-  if (!session?.user) {
-    throw new Error("認証が必要です");
-  }
-  return session.user.id;
-}
 
 function decodePk(raw: string): Record<string, string> {
   try {
