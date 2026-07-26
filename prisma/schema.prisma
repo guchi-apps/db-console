@@ -1,0 +1,147 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+// --- Supabase Auth（Google認証、JWT検証はアプリ側で都度実施） ---
+
+model User {
+  id             String    @id @default(cuid())
+  supabaseUserId String?   @unique
+  email          String    @unique
+  name           String?
+  image          String?
+  lastLoginAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  appSessions    AppSession[]
+  auditLogs      AuditLog[]
+  sqlHistories   SqlHistory[]
+  userPreference UserPreference?
+}
+
+// Supabase の JWT には含まれない、db-console 独自のセッション管理情報
+// （8時間絶対タイムアウト・5分間の再認証有効時間・将来の無操作タイムアウト用）。
+// Supabase の access token に含まれる session_id と1対1で対応する。
+model AppSession {
+  id                String    @id @default(cuid())
+  supabaseSessionId String    @unique
+  userId            String
+  loginAt           DateTime  @default(now())
+  lastActivityAt    DateTime  @default(now())
+  reauthVerifiedAt  DateTime?
+  createdAt         DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// --- db-console 独自データ ---
+
+enum AuditAction {
+  ROW_INSERT
+  ROW_UPDATE
+  ROW_DELETE
+  TABLE_CREATE
+  TABLE_ALTER
+  TABLE_DROP
+  TABLE_TRUNCATE
+  COLUMN_ADD
+  COLUMN_ALTER
+  COLUMN_DROP
+  INDEX_ADD
+  INDEX_DROP
+  SQL_EXECUTE
+  MANAGED_DB_CREATE
+  MANAGED_DB_UPDATE
+  MANAGED_DB_DELETE
+}
+
+enum AuditStatus {
+  SUCCESS
+  FAILURE
+}
+
+model AuditLog {
+  id           String      @id @default(cuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action       AuditAction
+  databaseName String
+  tableName    String?
+  objectName   String? // カラム名・インデックス名等
+  sqlText      String?     @db.Text
+  beforeData   String?     @db.LongText // JSON文字列
+  afterData    String?     @db.LongText // JSON文字列
+  affectedRows Int?
+  status       AuditStatus
+  errorMessage String?     @db.Text
+  ipAddress    String?
+  userAgent    String?     @db.Text
+  createdAt    DateTime    @default(now())
+
+  @@index([userId, createdAt])
+  @@index([databaseName, tableName])
+}
+
+enum SqlQueryType {
+  SELECT
+  INSERT
+  UPDATE
+  DELETE
+  CREATE_TABLE
+  ALTER_TABLE
+  OTHER
+}
+
+model SqlHistory {
+  id           String       @id @default(cuid())
+  userId       String
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  databaseName String
+  sqlText      String       @db.Text
+  queryType    SqlQueryType
+  durationMs   Int
+  affectedRows Int?
+  status       AuditStatus
+  errorMessage String?      @db.Text
+  createdAt    DateTime     @default(now())
+
+  @@index([userId, createdAt])
+}
+
+enum RowViewMode {
+  TABLE
+  CARD
+}
+
+model UserPreference {
+  userId       String      @id
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  theme        String      @default("system") // "light" | "dark" | "system"
+  pageSize     Int         @default(50)
+  rowViewMode  RowViewMode @default(TABLE)
+  updatedAt    DateTime    @updatedAt
+}
+
+enum DatabaseMode {
+  READ_ONLY
+  DATA_WRITE
+  SCHEMA_WRITE
+}
+
+// 管理対象DBの許可リスト（旧 config/databases.yml を置き換え、設定画面から編集する）。
+// 注意: ここにDBを追加しても、MariaDB側で db_console_data / db_console_schema
+// ユーザーへの GRANT が別途必要（VPS側のインフラ作業）。ここでの登録は
+// 「アプリがどのDBをどのモードで表示・操作するか」の論理的な許可リストに過ぎない。
+model ManagedDatabase {
+  id        String       @id @default(cuid())
+  name      String       @unique // 実際のMariaDB上のスキーマ名
+  label     String // 画面表示用の日本語名
+  mode      DatabaseMode
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+}

@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # ビルド・テストに必要な最小限のプレースホルダー環境変数（本番の1Password参照は不要）
+  DATABASE_URL: mysql://root@127.0.0.1:3306/db_console_test
+  NEXT_PUBLIC_SUPABASE_URL: https://dummy-project.supabase.co
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: dummy-publishable-key-for-ci-only
+  ALLOWED_EMAILS: test@example.com
+  DB_HOST: 127.0.0.1
+  DB_PORT: 3306
+  DB_CONSOLE_DATA_USER: dummy
+  DB_CONSOLE_DATA_PASSWORD: dummy
+  DB_CONSOLE_SCHEMA_USER: dummy
+  DB_CONSOLE_SCHEMA_PASSWORD: dummy
+  CHECKPOINT_DISABLE: "1"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # 本番はMariaDB 10.11のため、CIも（design guideの他アプリが使うmysql:8.0ではなく）
+    # mariadb:10.11を使う。db-console はMariaDB固有の挙動（mariadbドライバ、
+    # information_schemaの列名大文字小文字等）に依存しているため。
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MYSQL_DATABASE: db_console_test
+          MYSQL_ALLOW_EMPTY_PASSWORD: yes
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint check
+        run: npm run lint
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Prisma migrate (schema検証)
+        run: npx prisma migrate deploy
+
+      - name: Build check
+        run: npm run build
+
+  notify:
+    needs: [test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine workflow status
+        id: status
+        run: |
+          test="${{ needs.test.result }}"
+          if [ "$test" = "success" ]; then
+            result=success
+          elif [ "$test" = "cancelled" ]; then
+            result=cancelled
+          else
+            result=failure
+          fi
+          echo "result=$result" >> "$GITHUB_OUTPUT"
+          echo "jobs=test: $test" >> "$GITHUB_OUTPUT"
+          # develop push: failure only. main PR: success, failure, and cancelled.
+          if [ "$result" = "failure" ]; then
+            echo "should_notify=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.base_ref }}" = "main" ]; then
+            echo "should_notify=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_notify=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Load secrets from 1Password
+        if: steps.status.outputs.should_notify == 'true'
+        uses: 1password/load-secrets-action@v4
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          OP_ENV_FILE: ".github/ci.env.tpl"
+
+      - name: Signaly に通知
+        if: steps.status.outputs.should_notify == 'true'
+        env:
+          SIGNALY_WEBHOOK_URL: ${{ env.SIGNALY_WEBHOOK_URL }}
+          NOTIFY_APP: db-console
+          NOTIFY_KIND: CI
+          NOTIFY_STATUS: ${{ steps.status.outputs.result }}
+          NOTIFY_JOB: ${{ steps.status.outputs.jobs }}
+        run: bash .github/scripts/signaly-notify.sh
