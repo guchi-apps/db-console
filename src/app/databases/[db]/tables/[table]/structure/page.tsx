@@ -56,18 +56,18 @@ export default async function TableStructurePage({
         >
           ← {table} のレコード一覧
         </Link>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-1">
           <h1 className="text-xl font-semibold">{table} の構造</h1>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-x-3 gap-y-1">
             <Link
               href={`/api/databases/${db}/tables/${table}/export/sql`}
-              className="text-muted-foreground text-sm hover:underline"
+              className="text-muted-foreground text-sm whitespace-nowrap hover:underline"
             >
               構造をSQL出力
             </Link>
             <Link
               href={`/api/databases/${db}/tables/${table}/export/sql?withData=1`}
-              className="text-muted-foreground text-sm hover:underline"
+              className="text-muted-foreground text-sm whitespace-nowrap hover:underline"
             >
               構造+データをSQL出力
             </Link>
