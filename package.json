@@ -12,7 +12,9 @@
     "test:e2e": "playwright test",
     "env:init": "cp -n .env.example .env.local && echo 'Created .env.local (edit values, then: npm run db:setup && npm run db:migrate && npm run dev)'",
     "db:setup": "bash scripts/setup-db.sh",
-    "db:migrate": "bash -c 'set -a; source .env.local; set +a; export CHECKPOINT_DISABLE=1; bash scripts/construct-database-url.sh npx prisma migrate dev'"
+    "db:migrate": "bash -c 'set -a; source .env.local; set +a; export CHECKPOINT_DISABLE=1; bash scripts/construct-database-url.sh npx prisma migrate dev'",
+    "db:tunnel:prod": "bash scripts/prod-db-tunnel.sh",
+    "dev:prod-db": "bash scripts/dev-prod-db.sh"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.3",

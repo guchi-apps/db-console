@@ -1,36 +1,59 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# db-console
 
-## Getting Started
+スマートフォン向けMariaDB管理画面。Next.js App Router + NextAuth v5（Google認証）+ Prisma + mysql2で構成。
+詳細な要件・実装計画は [issue #1](https://github.com/m-guchi/db-console/issues/1) を参照。
 
-First, run the development server:
+## セットアップ
+
+```bash
+npm install
+npm run env:init      # .env.local を作成（値を編集）
+npm run db:setup      # ローカルMariaDBにメタデータDB・管理対象DB（テスト用）・ロールを作成
+npm run db:migrate    # Prismaマイグレーション
+```
+
+## 起動方法
+
+用途に応じて2種類の起動方法がある。
+
+### `npm run dev`（通常の開発）
+
+ローカルの開発用DBに接続する。ログイン・設定画面のDB一覧・管理対象DB（`app_car` / `app_asset_manager` / `wordpress`のローカル版）すべてがローカル環境内で完結する。
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+[http://localhost:3000](http://localhost:3000) で確認できる。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### `npm run dev:prod-db`（本番データ確認）
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+db-console自身のログイン・設定画面のDB一覧はローカルDBのまま、レコード一覧・SQL実行など**管理対象DBへの読み書きだけ**を本番（VPS）のデータに向けて起動する。1PasswordからSSH接続情報と`db_console_data` / `db_console_schema`の本番認証情報を取得し、SSHトンネル（`127.0.0.1:3307` → VPS `127.0.0.1:3306`）を自動で確立する。
 
-## Learn More
+```bash
+cp -n .env.op.example .env.op   # 初回のみ
+op signin
+npm run dev:prod-db
+```
 
-To learn more about Next.js, take a look at the following resources:
+> ⚠️ 起動中の追加・編集・削除・構造変更操作は実際の本番データに反映される。閲覧目的での利用を推奨。`Ctrl+C`で停止するとSSHトンネルも自動で閉じる。
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### `npm run db:tunnel:prod`（DB接続のみ確認したい場合）
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+開発サーバーを起動せず、本番DBへのSSHトンネルだけを張る。別ターミナルで`mysql`クライアント等から直接接続確認したいときに使う。
 
-## Deploy on Vercel
+```bash
+npm run db:tunnel:prod
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## テスト
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run lint
+npm test          # 単体テスト（Vitest）
+npm run test:e2e  # E2E（Playwright）
+```
+
+## デプロイ
+
+`main`ブランチへのpushで`.github/workflows/deploy.yml`が実行され、VPSへ自動デプロイされる（GitHub Actions + 1Password + PM2）。

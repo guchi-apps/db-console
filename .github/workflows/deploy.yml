@@ -1,0 +1,346 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-db-console-production
+  cancel-in-progress: true
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Create Git tag
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          HEAD_SHA=$(git rev-parse HEAD)
+
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            TAG_SHA=$(git rev-parse "$TAG")
+            if [ "$TAG_SHA" = "$HEAD_SHA" ]; then
+              echo "Tag ${TAG} already points to HEAD"
+              exit 0
+            fi
+            echo "::error::Tag ${TAG} already exists on ${TAG_SHA}, but HEAD is ${HEAD_SHA}. Bump package.json version before merging."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [tag, deploy]
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect prerelease
+        id: meta
+        run: |
+          TAG="${{ needs.tag.outputs.tag }}"
+          if [[ "$TAG" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.tag.outputs.tag }}
+          generate_release_notes: true
+          prerelease: ${{ steps.meta.outputs.prerelease == 'true' }}
+          skip_if_release_exists: true
+
+  build:
+    runs-on: ubuntu-latest
+    needs: tag
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Load secrets from 1Password
+        uses: 1password/load-secrets-action@v4
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          OP_ENV_FILE: .github/deploy.env.tpl
+
+      - name: Construct DATABASE_URL
+        run: bash scripts/construct-database-url.sh
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          NODE_ENV: production
+          CHECKPOINT_DISABLE: "1"
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          AUTH_URL: ${{ env.AUTH_URL }}
+          AUTH_SECRET: ${{ env.AUTH_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ env.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ env.GOOGLE_CLIENT_SECRET }}
+          ALLOWED_EMAILS: ${{ env.ALLOWED_EMAILS }}
+          DB_HOST: ${{ env.DB_HOST }}
+          DB_PORT: ${{ env.DB_PORT }}
+          DB_CONSOLE_DATA_USER: ${{ env.DB_CONSOLE_DATA_USER }}
+          DB_CONSOLE_DATA_PASSWORD: ${{ env.DB_CONSOLE_DATA_PASSWORD }}
+          DB_CONSOLE_SCHEMA_USER: ${{ env.DB_CONSOLE_SCHEMA_USER }}
+          DB_CONSOLE_SCHEMA_PASSWORD: ${{ env.DB_CONSOLE_SCHEMA_PASSWORD }}
+
+      - name: Create archive
+        run: |
+          tar -czf deploy.tar.gz \
+            package.json \
+            package-lock.json \
+            public \
+            .next \
+            prisma \
+            prisma.config.ts \
+            deploy \
+            scripts/construct-database-url.sh \
+            scripts/update-env-file.sh \
+            next.config.ts
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifact
+          path: deploy.tar.gz
+          if-no-files-found: error
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifact
+          path: ./
+
+      - name: Load secrets from 1Password
+        uses: 1password/load-secrets-action@v4
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          OP_ENV_FILE: .github/deploy.env.tpl
+
+      - name: Construct DATABASE_URL
+        run: bash scripts/construct-database-url.sh
+
+      - name: Install SSH key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ env.SSH_PRIVATE_KEY }}
+          known_hosts: placeholder
+          if_key_exists: replace
+
+      - name: Add known hosts
+        run: ssh-keyscan -p "${SSH_PORT}" -H "${HOST}" >> ~/.ssh/known_hosts
+        env:
+          HOST: ${{ env.HOST }}
+          SSH_PORT: ${{ env.SSH_PORT }}
+
+      - name: Upload archive
+        run: scp -P "${SSH_PORT}" deploy.tar.gz "${USERNAME}@${HOST}:${TARGET_DIR}/deploy.tar.gz"
+        env:
+          HOST: ${{ env.HOST }}
+          USERNAME: ${{ env.USERNAME }}
+          SSH_PORT: ${{ env.SSH_PORT }}
+          TARGET_DIR: ${{ env.TARGET_DIR }}
+
+      - name: Deploy and restart
+        uses: appleboy/ssh-action@v1
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          MIGRATE_DATABASE_URL: ${{ env.MIGRATE_DATABASE_URL }}
+          DB_USER: ${{ env.DB_USER }}
+          DB_PASSWORD: ${{ env.DB_PASSWORD }}
+          DB_HOST: ${{ env.DB_HOST }}
+          DB_PORT: ${{ env.DB_PORT }}
+          DB_NAME: ${{ env.DB_NAME }}
+          AUTH_URL: ${{ env.AUTH_URL }}
+          AUTH_SECRET: ${{ env.AUTH_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ env.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ env.GOOGLE_CLIENT_SECRET }}
+          ALLOWED_EMAILS: ${{ env.ALLOWED_EMAILS }}
+          DB_CONSOLE_DATA_USER: ${{ env.DB_CONSOLE_DATA_USER }}
+          DB_CONSOLE_DATA_PASSWORD: ${{ env.DB_CONSOLE_DATA_PASSWORD }}
+          DB_CONSOLE_SCHEMA_USER: ${{ env.DB_CONSOLE_SCHEMA_USER }}
+          DB_CONSOLE_SCHEMA_PASSWORD: ${{ env.DB_CONSOLE_SCHEMA_PASSWORD }}
+          TARGET_DIR: ${{ env.TARGET_DIR }}
+          APP_PORT: ${{ env.PORT }}
+        with:
+          host: ${{ env.HOST }}
+          username: ${{ env.USERNAME }}
+          key: ${{ env.SSH_PRIVATE_KEY }}
+          port: ${{ env.SSH_PORT }}
+          envs: DATABASE_URL,MIGRATE_DATABASE_URL,DB_USER,DB_PASSWORD,DB_HOST,DB_PORT,DB_NAME,AUTH_URL,AUTH_SECRET,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,ALLOWED_EMAILS,DB_CONSOLE_DATA_USER,DB_CONSOLE_DATA_PASSWORD,DB_CONSOLE_SCHEMA_USER,DB_CONSOLE_SCHEMA_PASSWORD,TARGET_DIR,APP_PORT
+          script: |
+            set -euo pipefail
+            cd "${TARGET_DIR}"
+
+            PORT="${APP_PORT:-3109}"
+
+            echo "Cleaning up old release files..."
+            rm -rf .next public package.json package-lock.json prisma prisma.config.ts deploy next.config.ts
+
+            echo "Extracting archive..."
+            tar -xzf deploy.tar.gz
+            rm deploy.tar.gz
+
+            update_env() {
+              bash scripts/update-env-file.sh .env "$1" "$2"
+            }
+
+            echo "Updating .env..."
+            update_env NODE_ENV production
+            update_env PORT "$PORT"
+            update_env DATABASE_URL "$DATABASE_URL"
+            update_env DB_USER "$DB_USER"
+            update_env DB_PASSWORD "$DB_PASSWORD"
+            update_env DB_HOST "$DB_HOST"
+            update_env DB_PORT "$DB_PORT"
+            update_env DB_NAME "$DB_NAME"
+            update_env AUTH_URL "$AUTH_URL"
+            update_env AUTH_SECRET "$AUTH_SECRET"
+            update_env GOOGLE_CLIENT_ID "$GOOGLE_CLIENT_ID"
+            update_env GOOGLE_CLIENT_SECRET "$GOOGLE_CLIENT_SECRET"
+            update_env ALLOWED_EMAILS "$ALLOWED_EMAILS"
+            update_env DB_CONSOLE_DATA_USER "$DB_CONSOLE_DATA_USER"
+            update_env DB_CONSOLE_DATA_PASSWORD "$DB_CONSOLE_DATA_PASSWORD"
+            update_env DB_CONSOLE_SCHEMA_USER "$DB_CONSOLE_SCHEMA_USER"
+            update_env DB_CONSOLE_SCHEMA_PASSWORD "$DB_CONSOLE_SCHEMA_PASSWORD"
+
+            echo "Installing production dependencies..."
+            npm install --omit=dev --no-audit --prefer-offline
+
+            echo "Applying database migrations..."
+            DATABASE_URL="$MIGRATE_DATABASE_URL" npx prisma migrate deploy
+
+            echo "Restarting PM2..."
+            if command -v pm2 >/dev/null 2>&1; then
+              pm2 delete db-console 2>/dev/null || true
+              PORT="$PORT" pm2 start deploy/ecosystem.config.js --env production
+              pm2 save
+            else
+              echo "pm2 is required on the server. Install: npm install -g pm2"
+              exit 1
+            fi
+
+            echo "Health check..."
+            sleep 5
+            curl -fsS "http://127.0.0.1:${PORT}/login" >/dev/null
+            echo "Deployment successful."
+
+  notify:
+    runs-on: ubuntu-latest
+    needs: [tag, build, deploy]
+    if: always()
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Determine workflow status
+        id: status
+        run: |
+          tag="${{ needs.tag.result }}"
+          build="${{ needs.build.result }}"
+          deploy="${{ needs.deploy.result }}"
+          if [ "$tag" = "success" ] && [ "$build" = "success" ] && [ "$deploy" = "success" ]; then
+            result=success
+          elif [ "$tag" = "cancelled" ] || [ "$build" = "cancelled" ] || [ "$deploy" = "cancelled" ]; then
+            result=cancelled
+          else
+            result=failure
+          fi
+          echo "result=$result" >> "$GITHUB_OUTPUT"
+
+      - name: Load secrets from 1Password
+        uses: 1password/load-secrets-action@v4
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          OP_ENV_FILE: .github/deploy.env.tpl
+
+      - name: Signaly に通知
+        env:
+          SIGNALY_WEBHOOK_URL: ${{ env.SIGNALY_WEBHOOK_URL }}
+          NOTIFY_APP: db-console
+          NOTIFY_KIND: デプロイ
+          NOTIFY_STATUS: ${{ steps.status.outputs.result }}
+        run: bash .github/scripts/signaly-notify.sh
+
+  notify-release:
+    runs-on: ubuntu-latest
+    needs: [tag, deploy, release]
+    if: always() && needs.release.result != 'skipped'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Load secrets from 1Password
+        uses: 1password/load-secrets-action@v4
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          OP_ENV_FILE: .github/deploy.env.tpl
+
+      - name: Signaly に通知
+        env:
+          SIGNALY_WEBHOOK_URL: ${{ env.SIGNALY_WEBHOOK_URL }}
+          NOTIFY_STATUS: ${{ needs.release.result }}
+          NOTIFY_APP: db-console
+          NOTIFY_KIND: リリース
+          NOTIFY_VERSION: ${{ needs.tag.outputs.tag }}
+        run: bash .github/scripts/signaly-notify.sh

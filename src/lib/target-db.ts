@@ -15,8 +15,11 @@ let schemaPool: Pool | null = null;
 
 function createPool(user: string, password: string): Pool {
   return mysql.createPool({
-    host: process.env.DB_HOST,
-    port: Number(process.env.DB_PORT ?? 3306),
+    // TARGET_DB_HOST/PORT は、ローカル開発からSSHトンネル経由で本番データを
+    // 参照する場合など、管理対象DBの接続先がdb-console自身のメタデータDB（DB_HOST/DB_PORT）
+    // と異なるときにだけ設定する。本番環境では同一MariaDBインスタンスのため未設定でよい。
+    host: process.env.TARGET_DB_HOST ?? process.env.DB_HOST,
+    port: Number(process.env.TARGET_DB_PORT ?? process.env.DB_PORT ?? 3306),
     user,
     password,
     connectionLimit: 5,
