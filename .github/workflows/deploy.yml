@@ -116,10 +116,8 @@ jobs:
           NODE_ENV: production
           CHECKPOINT_DISABLE: "1"
           DATABASE_URL: ${{ env.DATABASE_URL }}
-          AUTH_URL: ${{ env.AUTH_URL }}
-          AUTH_SECRET: ${{ env.AUTH_SECRET }}
-          GOOGLE_CLIENT_ID: ${{ env.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET: ${{ env.GOOGLE_CLIENT_SECRET }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ env.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
           ALLOWED_EMAILS: ${{ env.ALLOWED_EMAILS }}
           DB_HOST: ${{ env.DB_HOST }}
           DB_PORT: ${{ env.DB_PORT }}
@@ -205,10 +203,6 @@ jobs:
           DB_HOST: ${{ env.DB_HOST }}
           DB_PORT: ${{ env.DB_PORT }}
           DB_NAME: ${{ env.DB_NAME }}
-          AUTH_URL: ${{ env.AUTH_URL }}
-          AUTH_SECRET: ${{ env.AUTH_SECRET }}
-          GOOGLE_CLIENT_ID: ${{ env.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET: ${{ env.GOOGLE_CLIENT_SECRET }}
           ALLOWED_EMAILS: ${{ env.ALLOWED_EMAILS }}
           DB_CONSOLE_DATA_USER: ${{ env.DB_CONSOLE_DATA_USER }}
           DB_CONSOLE_DATA_PASSWORD: ${{ env.DB_CONSOLE_DATA_PASSWORD }}
@@ -221,7 +215,7 @@ jobs:
           username: ${{ env.USERNAME }}
           key: ${{ env.SSH_PRIVATE_KEY }}
           port: ${{ env.SSH_PORT }}
-          envs: DATABASE_URL,MIGRATE_DATABASE_URL,DB_USER,DB_PASSWORD,DB_HOST,DB_PORT,DB_NAME,AUTH_URL,AUTH_SECRET,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,ALLOWED_EMAILS,DB_CONSOLE_DATA_USER,DB_CONSOLE_DATA_PASSWORD,DB_CONSOLE_SCHEMA_USER,DB_CONSOLE_SCHEMA_PASSWORD,TARGET_DIR,APP_PORT
+          envs: DATABASE_URL,MIGRATE_DATABASE_URL,DB_USER,DB_PASSWORD,DB_HOST,DB_PORT,DB_NAME,ALLOWED_EMAILS,DB_CONSOLE_DATA_USER,DB_CONSOLE_DATA_PASSWORD,DB_CONSOLE_SCHEMA_USER,DB_CONSOLE_SCHEMA_PASSWORD,TARGET_DIR,APP_PORT
           script: |
             set -euo pipefail
             cd "${TARGET_DIR}"
@@ -248,10 +242,6 @@ jobs:
             update_env DB_HOST "$DB_HOST"
             update_env DB_PORT "$DB_PORT"
             update_env DB_NAME "$DB_NAME"
-            update_env AUTH_URL "$AUTH_URL"
-            update_env AUTH_SECRET "$AUTH_SECRET"
-            update_env GOOGLE_CLIENT_ID "$GOOGLE_CLIENT_ID"
-            update_env GOOGLE_CLIENT_SECRET "$GOOGLE_CLIENT_SECRET"
             update_env ALLOWED_EMAILS "$ALLOWED_EMAILS"
             update_env DB_CONSOLE_DATA_USER "$DB_CONSOLE_DATA_USER"
             update_env DB_CONSOLE_DATA_PASSWORD "$DB_CONSOLE_DATA_PASSWORD"
