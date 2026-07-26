@@ -452,6 +452,43 @@ export async function addColumn(
   await pool.query(sql);
 }
 
+export interface ColumnModificationInput {
+  sqlType: string;
+  nullable: boolean;
+  defaultValue?: string;
+  comment?: string;
+  position?: "first" | { after: string };
+}
+
+/** カラムの型・NULL可否・デフォルト値・コメント・並び順をまとめて変更する（MODIFY COLUMN）。 */
+export async function modifyColumn(
+  databaseName: string,
+  tableName: string,
+  columnName: string,
+  input: ColumnModificationInput,
+): Promise<void> {
+  const pool = await getPoolForOperation(databaseName, "schema-write");
+  await assertTableExists(pool, databaseName, tableName);
+  await assertColumnExists(pool, databaseName, tableName, columnName);
+
+  const qualifiedTable = qualifyTable(databaseName, tableName);
+  const nullSql = input.nullable ? "NULL" : "NOT NULL";
+  let sql = `ALTER TABLE ${qualifiedTable} MODIFY COLUMN ${quoteColumn(columnName)} ${input.sqlType} ${nullSql}`;
+  if (input.defaultValue) {
+    sql += ` DEFAULT ${sqlEscape(input.defaultValue)}`;
+  }
+  if (input.comment) {
+    sql += ` COMMENT ${sqlEscape(input.comment)}`;
+  }
+  if (input.position === "first") {
+    sql += " FIRST";
+  } else if (input.position) {
+    await assertColumnExists(pool, databaseName, tableName, input.position.after);
+    sql += ` AFTER ${quoteColumn(input.position.after)}`;
+  }
+  await pool.query(sql);
+}
+
 /** カラムを削除する（破壊的操作。呼び出し側で再認証・対象名入力確認を行うこと）。 */
 export async function dropColumn(
   databaseName: string,

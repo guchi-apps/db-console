@@ -66,6 +66,8 @@ export const COLUMN_TYPE_TEMPLATES: ColumnTypeTemplate[] = [
   },
 ];
 
+export { KEEP_CURRENT_TYPE_KEY } from "@/lib/column-constants";
+
 export interface ColumnTypeOption {
   key: string;
   label: string;

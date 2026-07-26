@@ -6,13 +6,15 @@ import { getTableColumns, getTableIndexes } from "@/lib/introspection";
 import { IdentifierNotFoundError } from "@/lib/identifier";
 import { requireSessionForPage } from "@/lib/session";
 import { COLUMN_TYPE_OPTIONS } from "@/lib/column-types";
-import { ColumnTypeSelectFields } from "@/components/column-type-fields";
+import { ColumnEditFields, ColumnTypeSelectFields } from "@/components/column-type-fields";
+import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { renameTableAction } from "../schema-actions";
 import {
   addColumnAction,
   addIndexAction,
   dropColumnAction,
   dropIndexAction,
+  modifyColumnAction,
 } from "../column-actions";
 
 export default async function TableStructurePage({
@@ -130,6 +132,39 @@ export default async function TableStructurePage({
             </tbody>
           </table>
         </div>
+
+        {canManageSchema && (
+          <div className="flex flex-col gap-2">
+            {columns.map((column) => (
+              <details key={column.name} className="rounded-md border p-2">
+                <summary className="cursor-pointer text-sm font-medium">
+                  {column.name} を編集
+                </summary>
+                <form
+                  action={modifyColumnAction}
+                  className="mt-2 flex flex-col items-end gap-2"
+                >
+                  <input type="hidden" name="__db" value={db} />
+                  <input type="hidden" name="__table" value={table} />
+                  <input type="hidden" name="columnName" value={column.name} />
+                  <ColumnEditFields
+                    column={column}
+                    options={COLUMN_TYPE_OPTIONS}
+                    otherColumnNames={columns
+                      .filter((c) => c.name !== column.name)
+                      .map((c) => c.name)}
+                  />
+                  <ConfirmSubmitButton
+                    confirmMessage={`${column.name} を変更します。型を狭めるとデータが失われる場合があります。よろしいですか？`}
+                    className="min-h-11 rounded-md border px-3 text-sm hover:bg-accent"
+                  >
+                    保存
+                  </ConfirmSubmitButton>
+                </form>
+              </details>
+            ))}
+          </div>
+        )}
 
         {canManageSchema && (
           <form
