@@ -86,7 +86,7 @@ export default async function TableRowsPage({
           <h1 className="text-xl font-semibold">{table}</h1>
           <Link
             href={`/databases/${db}/tables/${table}/structure`}
-            className="text-muted-foreground text-sm hover:underline"
+            className="text-primary text-sm underline underline-offset-2 hover:no-underline"
           >
             テーブル構造を見る
           </Link>

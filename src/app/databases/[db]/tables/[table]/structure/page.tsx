@@ -61,13 +61,13 @@ export default async function TableStructurePage({
           <div className="flex flex-wrap gap-x-3 gap-y-1">
             <Link
               href={`/api/databases/${db}/tables/${table}/export/sql`}
-              className="text-muted-foreground text-sm whitespace-nowrap hover:underline"
+              className="text-primary text-sm whitespace-nowrap underline underline-offset-2 hover:no-underline"
             >
               構造をSQL出力
             </Link>
             <Link
               href={`/api/databases/${db}/tables/${table}/export/sql?withData=1`}
-              className="text-muted-foreground text-sm whitespace-nowrap hover:underline"
+              className="text-primary text-sm whitespace-nowrap underline underline-offset-2 hover:no-underline"
             >
               構造+データをSQL出力
             </Link>
