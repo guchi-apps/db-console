@@ -44,6 +44,12 @@ export interface IndexInfo {
   columns: string[];
 }
 
+export interface ForeignKeyInfo {
+  columnName: string;
+  referencedTable: string;
+  referencedColumn: string;
+}
+
 export interface RowsPage {
   columns: string[];
   rows: Record<string, unknown>[];
@@ -163,6 +169,30 @@ export async function getTableIndexes(
   return Array.from(byName.values());
 }
 
+/** テーブルの外部キー制約を取得する（information_schema.KEY_COLUMN_USAGE）。参照先は同一DB内のみ対象。 */
+export async function getTableForeignKeys(
+  databaseName: string,
+  tableName: string,
+): Promise<ForeignKeyInfo[]> {
+  const pool = await getPoolForOperation(databaseName, "read-only");
+  await assertTableExists(pool, databaseName, tableName);
+
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT column_name AS column_name, referenced_table_name AS referenced_table_name,
+            referenced_column_name AS referenced_column_name
+     FROM information_schema.key_column_usage
+     WHERE table_schema = ? AND table_name = ?
+       AND referenced_table_schema = ? AND referenced_table_name IS NOT NULL`,
+    [databaseName, tableName, databaseName],
+  );
+
+  return rows.map((row) => ({
+    columnName: row.column_name as string,
+    referencedTable: row.referenced_table_name as string,
+    referencedColumn: row.referenced_column_name as string,
+  }));
+}
+
 const MAX_PAGE_SIZE = 200;
 
 export interface GetRowsOptions {
@@ -171,6 +201,8 @@ export interface GetRowsOptions {
   sortColumn?: string;
   sortDirection?: "asc" | "desc";
   search?: string;
+  filterColumn?: string;
+  filterValue?: string;
 }
 
 /**
@@ -200,23 +232,33 @@ export async function getTableRows(
     orderClause = ` ORDER BY ${quoteColumn(options.sortColumn)} ${direction}`;
   }
 
-  let whereClause = "";
+  const whereConditions: string[] = [];
   const whereParams: unknown[] = [];
+
+  if (options.filterColumn) {
+    await assertColumnExists(pool, databaseName, tableName, options.filterColumn);
+    whereConditions.push(`${quoteColumn(options.filterColumn)} = ?`);
+    whereParams.push(options.filterValue ?? "");
+  }
+
   if (options.search) {
     const searchableColumns = columns.filter((c) =>
       /char|text|varchar/i.test(c.dataType),
     );
     if (searchableColumns.length > 0) {
-      whereClause =
-        " WHERE " +
-        searchableColumns
-          .map((c) => `${quoteColumn(c.name)} LIKE ?`)
-          .join(" OR ");
+      whereConditions.push(
+        "(" +
+          searchableColumns.map((c) => `${quoteColumn(c.name)} LIKE ?`).join(" OR ") +
+          ")",
+      );
       whereParams.push(
         ...searchableColumns.map(() => `%${options.search}%`),
       );
     }
   }
+
+  const whereClause =
+    whereConditions.length > 0 ? " WHERE " + whereConditions.join(" AND ") : "";
 
   const [countRows] = await pool.query<RowDataPacket[]>(
     `SELECT COUNT(*) AS total FROM ${qualifiedTable}${whereClause}`,

@@ -2,7 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { getDatabaseEntry, modeAtLeast } from "@/lib/config";
-import { getPrimaryKeyColumns, getTableRows } from "@/lib/introspection";
+import {
+  getPrimaryKeyColumns,
+  getTableForeignKeys,
+  getTableRows,
+  type ForeignKeyInfo,
+} from "@/lib/introspection";
 import { IdentifierNotFoundError } from "@/lib/identifier";
 import { requireSessionForPage } from "@/lib/session";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
@@ -16,6 +21,28 @@ function formatCellValue(value: unknown): string {
   return String(value);
 }
 
+/** 外部キーカラムの値は、参照先テーブルをその値で絞り込んだ一覧ページへのリンクとして表示する。 */
+function CellValue({
+  db,
+  value,
+  foreignKey,
+}: {
+  db: string;
+  value: unknown;
+  foreignKey?: ForeignKeyInfo;
+}) {
+  const formatted = formatCellValue(value);
+  if (foreignKey && value !== null && value !== undefined) {
+    const href = `/databases/${db}/tables/${foreignKey.referencedTable}?filterColumn=${encodeURIComponent(foreignKey.referencedColumn)}&filterValue=${encodeURIComponent(formatted)}`;
+    return (
+      <Link href={href} className="text-primary underline underline-offset-2 hover:no-underline">
+        {formatted}
+      </Link>
+    );
+  }
+  return <>{formatted}</>;
+}
+
 export default async function TableRowsPage({
   params,
   searchParams,
@@ -26,6 +53,8 @@ export default async function TableRowsPage({
     sortColumn?: string;
     sortDirection?: string;
     search?: string;
+    filterColumn?: string;
+    filterValue?: string;
     error?: string;
   }>;
 }) {
@@ -45,20 +74,25 @@ export default async function TableRowsPage({
 
   let result;
   let pkColumns: string[] = [];
+  let foreignKeys: ForeignKeyInfo[] = [];
   try {
     result = await getTableRows(db, table, {
       page,
       sortColumn: query.sortColumn,
       sortDirection,
       search: query.search,
+      filterColumn: query.filterColumn,
+      filterValue: query.filterValue,
     });
     pkColumns = await getPrimaryKeyColumns(db, table);
+    foreignKeys = await getTableForeignKeys(db, table);
   } catch (error) {
     if (error instanceof IdentifierNotFoundError) {
       notFound();
     }
     throw error;
   }
+  const fkByColumn = new Map(foreignKeys.map((fk) => [fk.columnName, fk]));
 
   const canEditRows = canWrite && pkColumns.length > 0;
   const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
@@ -70,7 +104,7 @@ export default async function TableRowsPage({
       if (value) params.set(key, value);
     }
     const qs = params.toString();
-    return qs ? `?${qs}` : "";
+    return `/databases/${db}/tables/${table}${qs ? `?${qs}` : ""}`;
   }
 
   return (
@@ -102,6 +136,20 @@ export default async function TableRowsPage({
       {canWrite && !canEditRows && (
         <p className="text-muted-foreground rounded-md border px-3 py-2 text-sm">
           このテーブルには主キーがないため、個別のレコード編集・削除はできません。
+        </p>
+      )}
+
+      {query.filterColumn && (
+        <p className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/50 px-3 py-2 text-sm">
+          <span>
+            絞り込み中: {query.filterColumn} = {query.filterValue}
+          </span>
+          <Link
+            href={buildQuery({ filterColumn: undefined, filterValue: undefined, page: undefined })}
+            className="text-primary underline underline-offset-2 hover:no-underline"
+          >
+            解除
+          </Link>
         </p>
       )}
 
@@ -236,7 +284,7 @@ export default async function TableRowsPage({
                     )}
                     {result.columns.map((column) => (
                       <td key={column} className="px-3 py-2 whitespace-nowrap">
-                        {formatCellValue(row[column])}
+                        <CellValue db={db} value={row[column]} foreignKey={fkByColumn.get(column)} />
                       </td>
                     ))}
                     {canEditRows && (
@@ -308,7 +356,7 @@ export default async function TableRowsPage({
                     >
                       <dt className="text-muted-foreground shrink-0">{column}</dt>
                       <dd className="min-w-0 text-right break-all">
-                        {formatCellValue(row[column])}
+                        <CellValue db={db} value={row[column]} foreignKey={fkByColumn.get(column)} />
                       </dd>
                     </div>
                   ))}
