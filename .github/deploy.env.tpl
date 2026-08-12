@@ -16,7 +16,7 @@ MIGRATE_DB_USER=op://apps/DB/migrate-user
 MIGRATE_DB_PASSWORD=op://apps/DB/migrate-password
 
 # Auth / App（Supabaseは複数アプリ共通プロジェクトのため Vault は共有アイテムを参照）
-NEXT_PUBLIC_SUPABASE_URL=op://apps/Supabase/url
+NEXT_PUBLIC_SUPABASE_URL=op://apps/Supabase/project-url
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=op://apps/Supabase/publishable-key
 ALLOWED_EMAILS=op://apps/db-console/allowed-emails
 
