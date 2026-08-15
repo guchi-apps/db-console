@@ -61,7 +61,7 @@ CIのDBは **MariaDB 10.11**。本番がMariaDBで、このアプリはMariaDB�
 
 `@claude` コメントを起点に、計画提示〜実装〜develop向けPR作成までを GitHub Actions 上で無人実行する。
 ワークフローの実体は `guchi-apps/issue-deck` にあり、このリポジトリの `.github/workflows/` には
-`uses:` で参照する薄い caller だけを置いている（`@workflows/v15`）。
+`uses:` で参照する薄い caller だけを置いている（`@workflows/v18`）。
 
 設計・運用の詳細は issue-deck 側を参照する。
 
@@ -95,6 +95,22 @@ Issue専用ブランチは `develop` から作成し、ブランチ名は **`iss
 **`gh issue edit` で進捗を進めることはできない。** Status を書けるのは issue-deck だけで、
 ワークフローは進捗報告API（`POST /api/progress`）へ報告する。ブランチのpush・PR作成・PRマージを
 トリガーに自動で遷移するため、エージェントが自分で進捗を動かす必要はない。
+
+### リリース（develop→main）
+
+**リリースは issue-deck の画面から起動する。** ヘッダーのロケットアイコン、またはブランチの流れ画面の
+リリースボタンが `.github/workflows/release-develop-to-main.yml` を `workflow_dispatch` で起動し、
+次の順に進む（issue-deck#1551）。
+
+1. バージョンbump PR（`release/vX.Y.Z` → `develop`）が作られる。上げ幅は main と develop のコード差分から
+   自動判定する。CI通過後に develop へ自動マージされる
+2. バンプPRのマージで `package.json` が変わると同じワークフローが再度起動し、develop → main の
+   リリースPRを作る
+3. **リリースPRのマージは人が行う**（自動マージ不可カテゴリ）。マージすると `deploy.yml` が
+   `v<version>` タグを作り、VPS へデプロイする
+
+エージェントはこのフローを自分で起動しない。バージョンを手で書き換える必要もない
+（`package.json` の `version` はバンプPRだけが更新する）。
 
 ### 条件を表すラベル（進捗とは別軸）
 
