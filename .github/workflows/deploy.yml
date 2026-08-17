@@ -111,7 +111,6 @@ jobs:
       DB_CONSOLE_SCHEMA_PASSWORD: ${{ secrets.DB_CONSOLE_SCHEMA_PASSWORD }}
       DB_CONSOLE_SCHEMA_USER: ${{ secrets.DB_CONSOLE_SCHEMA_USER }}
       DB_NAME: ${{ secrets.DB_NAME }}
-      PORT: ${{ vars.PORT }}
       SIGNALY_WEBHOOK_URL: ${{ secrets.SIGNALY_WEBHOOK_URL }}
       TARGET_DIR: ${{ secrets.TARGET_DIR }}
 
@@ -197,7 +196,6 @@ jobs:
       DB_CONSOLE_SCHEMA_PASSWORD: ${{ secrets.DB_CONSOLE_SCHEMA_PASSWORD }}
       DB_CONSOLE_SCHEMA_USER: ${{ secrets.DB_CONSOLE_SCHEMA_USER }}
       DB_NAME: ${{ secrets.DB_NAME }}
-      PORT: ${{ vars.PORT }}
       SIGNALY_WEBHOOK_URL: ${{ secrets.SIGNALY_WEBHOOK_URL }}
       TARGET_DIR: ${{ secrets.TARGET_DIR }}
 
@@ -251,18 +249,19 @@ jobs:
           DB_CONSOLE_SCHEMA_USER: ${{ env.DB_CONSOLE_SCHEMA_USER }}
           DB_CONSOLE_SCHEMA_PASSWORD: ${{ env.DB_CONSOLE_SCHEMA_PASSWORD }}
           TARGET_DIR: ${{ env.TARGET_DIR }}
-          APP_PORT: ${{ env.PORT }}
         with:
           host: ${{ env.HOST }}
           username: ${{ env.USERNAME }}
           key: ${{ env.SSH_PRIVATE_KEY }}
           port: ${{ env.SSH_PORT }}
-          envs: DATABASE_URL,MIGRATE_DATABASE_URL,DB_USER,DB_PASSWORD,DB_HOST,DB_PORT,DB_NAME,ALLOWED_EMAILS,DB_CONSOLE_DATA_USER,DB_CONSOLE_DATA_PASSWORD,DB_CONSOLE_SCHEMA_USER,DB_CONSOLE_SCHEMA_PASSWORD,TARGET_DIR,APP_PORT
+          envs: DATABASE_URL,MIGRATE_DATABASE_URL,DB_USER,DB_PASSWORD,DB_HOST,DB_PORT,DB_NAME,ALLOWED_EMAILS,DB_CONSOLE_DATA_USER,DB_CONSOLE_DATA_PASSWORD,DB_CONSOLE_SCHEMA_USER,DB_CONSOLE_SCHEMA_PASSWORD,TARGET_DIR
           script: |
             set -euo pipefail
             cd "${TARGET_DIR}"
 
-            PORT="${APP_PORT:-3109}"
+            # 待受ポートはシークレットではなく設定値として平文で持つ
+            # （guchi-apps/docs の standards/ports.md「ポート番号は 1Password で管理しない」。#36）。
+            PORT=3109
 
             echo "Cleaning up old release files..."
             rm -rf .next public package.json package-lock.json prisma prisma.config.ts deploy next.config.ts
