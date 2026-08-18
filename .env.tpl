@@ -6,13 +6,10 @@ DB_HOST=op://apps/DB/db-host
 DB_PORT=op://apps/DB/db-port
 # DATABASE_URL は1Passwordに登録せず、scripts/construct-database-url.sh で組み立てる
 
-# Google OAuth（本番用クライアント。開発用クライアントは.env.localに直接記載し1Passwordには登録しない）
-GOOGLE_CLIENT_ID=op://apps/db-console/google-client-id
-GOOGLE_CLIENT_SECRET=op://apps/db-console/google-client-secret
-
-# NextAuth.js / Auth.js
-AUTH_SECRET=op://apps/db-console/auth-secret
-AUTH_URL=op://apps/db-console/auth-url
+# Supabase Auth（複数アプリ共通のプロジェクト。Google Providerの設定はSupabaseダッシュボード側で行う。
+# Publishable keyはフロントに公開してよい値。Secret keyはこのアプリでは使用しない）
+NEXT_PUBLIC_SUPABASE_URL=op://apps/Supabase/project-url
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=op://apps/Supabase/publishable-key
 
 # ログイン許可メールアドレス（カンマ区切り、複数可）
 ALLOWED_EMAILS=op://apps/db-console/allowed-emails
