@@ -61,7 +61,11 @@ CIのDBは **MariaDB 10.11**。本番がMariaDBで、このアプリはMariaDB�
 
 `@claude` コメントを起点に、計画提示〜実装〜develop向けPR作成までを GitHub Actions 上で無人実行する。
 ワークフローの実体は `guchi-apps/issue-deck` にあり、このリポジトリの `.github/workflows/` には
-`uses:` で参照する薄い caller だけを置いている（`@workflows/v18`）。
+`uses:` で参照する薄い caller だけを置いている（現在は `@workflows/v23`）。**caller を追加・更新する
+ときは、既存の caller と同じタグへ必ず揃える**（`uses:` と `prompts-ref` の両方）。
+
+コンフリクトの自動解消（`claude-conflict-resolve.yml`）も同じ仕組みの caller で、develop向けPRが
+`develop` とコンフリクトすると無人で解消を試みる。
 
 設計・運用の詳細は issue-deck 側を参照する。
 
