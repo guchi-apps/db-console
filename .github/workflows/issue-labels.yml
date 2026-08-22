@@ -27,8 +27,9 @@ on:
     branches:
       - develop
       - main
+  # closedはcleanup-on-close、opened/editedはmanual-step-label・manual-step-body-checkが使う
   issues:
-    types: [closed]
+    types: [opened, edited, closed]
   schedule:
     # 15分ごとから30分ごとへ落とした。scheduleで動くのはdevelop-merge-sweepだけで、
     # これはGitHub Auto-mergeがdevelop-pr-mergedジョブを起こさなかった場合の安全網に
