@@ -66,7 +66,7 @@ on:
 
 jobs:
   conflict-resolve:
-    uses: guchi-apps/issue-deck/.github/workflows/reusable-claude-conflict-resolve.yml@workflows/v23
+    uses: guchi-apps/issue-deck/.github/workflows/reusable-claude-conflict-resolve.yml@workflows/v25
     with:
       # db-consoleはNext.js + Prisma + MariaDBのため node-db（claude-issue-dispatch.ymlと同じ）。
       runtime-setup: node-db
@@ -91,7 +91,7 @@ jobs:
         NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=dummy-publishable-key-for-ci-only
         ALLOWED_EMAILS=test@example.com
       # 上の uses: と同じタグを指定する。
-      prompts-ref: workflows/v23
+      prompts-ref: workflows/v25
     # CLAUDE_CODE_OAUTH_TOKEN・WORKFLOW_PAT・PROGRESS_REPORT_SECRETを呼ばれる側へ渡す。
     secrets: inherit
     permissions:
