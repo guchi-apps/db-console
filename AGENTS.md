@@ -183,3 +183,14 @@ GitHubのsecret/variableにのみ置く。
 
 **実行時の1Password呼び出しは行わない**（issue-deck#1307）。GitHub Actions は GitHubの
 secret/variable から値を取得する。
+
+**このリポジトリは public である**（2026-08-18に private から変更。#49）。GitHub Actions の
+標準ランナーぶんが課金対象外になるのが目的で、運用上は次の3点が変わっている。
+
+- **Secret scanning と push protection が有効。** 実シークレットらしき文字列を含むコミットは
+  push が拒否される。ダミー値をサンプルへ書くときも、実在するトークン形式（`ghp_` 等）を
+  真似た文字列は使わない
+- **Actions の成果物（`build-artifact`）とログは誰でもダウンロードできる。** ビルドへ
+  シークレットを焼き込まない。クライアントバンドルへ入る `NEXT_PUBLIC_*` は公開前提の値だけにする
+- **issue / PR の本文とコメントも全世界から読める。** 個人のメールアドレス・VPSの実IP・
+  実パスワードを書かない。書いてしまった場合は編集ではなく削除する（編集履歴に原文が残るため）
