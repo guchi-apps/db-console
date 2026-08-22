@@ -194,3 +194,8 @@ secret/variable から値を取得する。
   シークレットを焼き込まない。クライアントバンドルへ入る `NEXT_PUBLIC_*` は公開前提の値だけにする
 - **issue / PR の本文とコメントも全世界から読める。** 個人のメールアドレス・VPSの実IP・
   実パスワードを書かない。書いてしまった場合は編集ではなく削除する（編集履歴に原文が残るため）
+
+**課金が外れたことを billing usage API の `netAmount` で判定してはいけない。** private でも
+無料枠（3,000分/月）の範囲内なら `netAmount` は $0 になり、public 化の前後で値が変わらない。
+`GET /organizations/<org>/settings/billing/usage` の結果から**現在 private なリポジトリぶんの
+`Minutes` を合計**し、無料枠に対してどれだけ消費しているかで見る（#49）。
