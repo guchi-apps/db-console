@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { APP_ICON_BACKGROUND, APP_NAME, AppIconGlyph } from "@/lib/app-branding";
 import { createClient } from "@/lib/supabase/server";
 import { getRequestOrigin } from "@/lib/request-origin";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,13 @@ export default async function LoginPage({
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-6 p-8">
       <div className="flex flex-col items-center gap-2 text-center">
-        <h1 className="text-2xl font-semibold">db-console</h1>
+        <div
+          className="flex h-16 w-16 items-center justify-center rounded-2xl"
+          style={{ background: APP_ICON_BACKGROUND }}
+        >
+          <AppIconGlyph size={40} />
+        </div>
+        <h1 className="text-2xl font-semibold">{APP_NAME}</h1>
         <p className="text-muted-foreground text-sm">
           許可されたGoogleアカウントでログインしてください
         </p>
