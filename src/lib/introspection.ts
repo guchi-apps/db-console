@@ -110,14 +110,18 @@ export async function listTables(databaseName: string): Promise<TableSummary[]> 
     [databaseName],
   );
 
-  return rows.map((row) => ({
-    name: row.table_name as string,
-    kind: toTableKind(row.table_type),
-    engine: (row.engine as string) ?? null,
-    approximateRowCount:
-      row.table_rows === null ? null : Number(row.table_rows),
-    comment: (row.table_comment as string) || null,
-  }));
+  return rows.map((row) => {
+    const kind = toTableKind(row.table_type);
+    return {
+      name: row.table_name as string,
+      kind,
+      engine: (row.engine as string) ?? null,
+      approximateRowCount:
+        row.table_rows === null ? null : Number(row.table_rows),
+      // MariaDBはビューの table_comment に固定文字列 'VIEW' を入れる。利用者のコメントではないので落とす。
+      comment: kind === "view" ? null : (row.table_comment as string) || null,
+    };
+  });
 }
 
 /** 対象がテーブルかビューかを返す（存在しなければ IdentifierNotFoundError）。 */
