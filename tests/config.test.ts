@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertManagedName,
   databaseEntryInputSchema,
   databaseNameSchema,
+  isManagedName,
   modeAtLeast,
 } from "@/lib/config";
 
@@ -58,4 +60,19 @@ describe("modeAtLeast", () => {
     expect(modeAtLeast("schema-write", "data-write")).toBe(true);
     expect(modeAtLeast("schema-write", "schema-write")).toBe(true);
   });
+});
+
+describe("isManagedName / assertManagedName", () => {
+  it.each(["app_car", "app_asset_manager"])("%s は管理対象の名前", (name) => {
+    expect(isManagedName(name)).toBe(true);
+    expect(() => assertManagedName("DB名", name)).not.toThrow();
+  });
+
+  it.each(["wordpress", "app", "app_", "mysql", "APP_car"])(
+    "%s は管理対象の名前ではない",
+    (name) => {
+      expect(isManagedName(name)).toBe(false);
+      expect(() => assertManagedName("DB名", name)).toThrow();
+    },
+  );
 });

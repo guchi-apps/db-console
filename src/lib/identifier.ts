@@ -17,6 +17,14 @@ export class IdentifierNotFoundError extends Error {
   }
 }
 
+/** ビュー（VIEW）に対して、ビューでは成立しない書き込み・構造変更を行おうとしたときのエラー。 */
+export class ViewNotModifiableError extends Error {
+  constructor(value: string) {
+    super(`${value} はビューのため、この操作はできません（閲覧のみ可能です）`);
+    this.name = "ViewNotModifiableError";
+  }
+}
+
 /** DB名・テーブル名・カラム名・インデックス名に共通の文字種チェック。 */
 function assertSafeIdentifierName(kind: string, name: string): void {
   if (!IDENTIFIER_PATTERN.test(name)) {
@@ -45,6 +53,41 @@ export function quoteIdentifier(name: string): string {
   return `\`${name.replace(/`/g, "``")}\``;
 }
 
+/**
+ * GRANT / REVOKE の対象DB名を、そのDBだけに一致するパターンへ変換する（`app_car` → `app\_car`）。
+ *
+ * **これはただのエスケープではなく、GRANTを通すために必須の変換である。**
+ * db_console_admin ロールは `app\_%` というパターンに対して権限を持つが、MySQL/MariaDBは
+ * GRANT文のDB名を「パターン」として扱い、付与する側が持つパターンに含まれることを要求する。
+ * `GRANT ... ON \`app_car\`.*` は `_` がワイルドカード扱いのまま比較されて
+ * `Access denied ... to database 'app_car'` になり、`\_` へエスケープすると通る
+ * （MySQL 8.0.46 / #91 で確認）。付与された権限は `app_car` にだけ効く。
+ */
+export function toDatabaseGrantPattern(databaseName: string): string {
+  assertSafeDatabaseName(databaseName);
+  return databaseName.replace(/([\\_%])/g, "\\$1");
+}
+
+/**
+ * mysql.db の Db カラム（GRANTパターン）をDB名へ戻す。
+ * ワイルドカード（エスケープされていない `%` や `_`）を含む行は複数DBに掛かる指定のため、
+ * DB名としては解釈できず null を返す。
+ */
+export function fromDatabaseGrantPattern(pattern: string): string | null {
+  let result = "";
+  for (let i = 0; i < pattern.length; i++) {
+    const char = pattern[i];
+    if (char === "\\" && i + 1 < pattern.length) {
+      result += pattern[i + 1];
+      i++;
+      continue;
+    }
+    if (char === "%" || char === "_") return null;
+    result += char;
+  }
+  return result;
+}
+
 /** `db`.`table` 形式の完全修飾テーブル名を組み立てる（両方の文字種チェックを行った上で）。 */
 export function qualifyTable(databaseName: string, tableName: string): string {
   assertSafeDatabaseName(databaseName);
@@ -58,21 +101,53 @@ export function quoteColumn(columnName: string): string {
   return quoteIdentifier(columnName);
 }
 
-/** information_schema に対して実在確認を行う。SELECTのみで完結するため data-write 権限で実行できる。 */
+/**
+ * information_schema でテーブル・ビューの実在確認を行い、その table_type を返す。
+ * SELECTのみで完結するため data-write 権限で実行できる。
+ */
+async function queryTableType(
+  pool: Pool,
+  databaseName: string,
+  tableName: string,
+): Promise<string> {
+  assertSafeDatabaseName(databaseName);
+  assertSafeTableName(tableName);
+
+  const [rows] = await pool.query(
+    `SELECT table_type AS table_type FROM information_schema.tables
+     WHERE table_schema = ? AND table_name = ? LIMIT 1`,
+    [databaseName, tableName],
+  );
+  const row = (rows as Record<string, unknown>[])[0];
+  if (!row) {
+    throw new IdentifierNotFoundError("テーブル", `${databaseName}.${tableName}`);
+  }
+  return String(row.table_type ?? "");
+}
+
+/**
+ * 実在確認を行う（ビューも通す）。レコード閲覧・カラム一覧など、ビューでも成立する読み取り経路で使う。
+ */
 export async function assertTableExists(
   pool: Pool,
   databaseName: string,
   tableName: string,
 ): Promise<void> {
-  assertSafeDatabaseName(databaseName);
-  assertSafeTableName(tableName);
+  await queryTableType(pool, databaseName, tableName);
+}
 
-  const [rows] = await pool.query(
-    `SELECT 1 FROM information_schema.tables WHERE table_schema = ? AND table_name = ? LIMIT 1`,
-    [databaseName, tableName],
-  );
-  if ((rows as unknown[]).length === 0) {
-    throw new IdentifierNotFoundError("テーブル", `${databaseName}.${tableName}`);
+/**
+ * 実在確認を行ったうえで、対象がビューなら拒否する。レコードの追加・更新・削除とDDLは
+ * ビューでは成立しないため、画面の導線を消すだけでなくこの関数でSQL実行の手前で止める。
+ */
+export async function assertBaseTableExists(
+  pool: Pool,
+  databaseName: string,
+  tableName: string,
+): Promise<void> {
+  const tableType = await queryTableType(pool, databaseName, tableName);
+  if (tableType.toUpperCase().includes("VIEW")) {
+    throw new ViewNotModifiableError(`${databaseName}.${tableName}`);
   }
 }
 

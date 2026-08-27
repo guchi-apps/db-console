@@ -22,5 +22,9 @@ DB_CONSOLE_DATA_PASSWORD=op://apps/db-console/db-console-data-password
 DB_CONSOLE_SCHEMA_USER=op://apps/db-console/db-console-schema-user
 DB_CONSOLE_SCHEMA_PASSWORD=op://apps/db-console/db-console-schema-password
 
+# DB作成・DBユーザー管理用ロール（#91でVPS側に作成。db_console_admin 等）
+DB_CONSOLE_ADMIN_USER=op://apps/db-console/db-console-admin-user
+DB_CONSOLE_ADMIN_PASSWORD=op://apps/db-console/db-console-admin-password
+
 # CI / デプロイ通知（Signaly）
 SIGNALY_WEBHOOK_URL=op://apps/db-console/ci-webhook-url

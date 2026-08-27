@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 
-import { IdentifierNotFoundError, InvalidIdentifierError } from "@/lib/identifier";
+import {
+  IdentifierNotFoundError,
+  InvalidIdentifierError,
+  ViewNotModifiableError,
+} from "@/lib/identifier";
 import { DatabaseNotAllowedError, ModeNotAllowedError } from "@/lib/target-db";
 
 /** ルートハンドラ共通のエラーハンドリング。既知のドメインエラーは適切なHTTPステータスへ変換する。 */
@@ -11,7 +15,7 @@ export function toErrorResponse(error: unknown): NextResponse {
   if (error instanceof IdentifierNotFoundError) {
     return NextResponse.json({ error: error.message }, { status: 404 });
   }
-  if (error instanceof InvalidIdentifierError) {
+  if (error instanceof InvalidIdentifierError || error instanceof ViewNotModifiableError) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 

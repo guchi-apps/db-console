@@ -5,8 +5,10 @@ import { getDatabaseEntry, modeAtLeast } from "@/lib/config";
 import {
   getPrimaryKeyColumns,
   getTableForeignKeys,
+  getTableKind,
   getTableRows,
   type ForeignKeyInfo,
+  type TableKind,
 } from "@/lib/introspection";
 import { IdentifierNotFoundError } from "@/lib/identifier";
 import { requireSessionForPage } from "@/lib/session";
@@ -67,15 +69,15 @@ export default async function TableRowsPage({
     notFound();
   }
 
-  const canWrite = modeAtLeast(entry.mode, "data-write");
-
   const page = Number(query.page ?? "1") || 1;
   const sortDirection = query.sortDirection === "desc" ? "desc" : "asc";
 
   let result;
+  let kind: TableKind = "table";
   let pkColumns: string[] = [];
   let foreignKeys: ForeignKeyInfo[] = [];
   try {
+    kind = await getTableKind(db, table);
     result = await getTableRows(db, table, {
       page,
       sortColumn: query.sortColumn,
@@ -94,6 +96,9 @@ export default async function TableRowsPage({
   }
   const fkByColumn = new Map(foreignKeys.map((fk) => [fk.columnName, fk]));
 
+  // ビューは主キーを持たないため書き込み経路が成立しない。導線自体を出さない。
+  const isView = kind === "view";
+  const canWrite = modeAtLeast(entry.mode, "data-write") && !isView;
   const canEditRows = canWrite && pkColumns.length > 0;
   const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
 
@@ -116,13 +121,20 @@ export default async function TableRowsPage({
         >
           ← {entry.label} のテーブル一覧
         </Link>
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold">{table}</h1>
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="flex min-w-0 items-center gap-2 text-xl font-semibold">
+            <span className="truncate">{table}</span>
+            {isView && (
+              <span className="shrink-0 rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-xs font-normal text-sky-700">
+                ビュー
+              </span>
+            )}
+          </h1>
           <Link
             href={`/databases/${db}/tables/${table}/structure`}
-            className="text-primary text-sm underline underline-offset-2 hover:no-underline"
+            className="text-primary shrink-0 text-sm underline underline-offset-2 hover:no-underline"
           >
-            テーブル構造を見る
+            {isView ? "ビュー定義を見る" : "テーブル構造を見る"}
           </Link>
         </div>
       </div>
@@ -130,6 +142,12 @@ export default async function TableRowsPage({
       {query.error && (
         <p className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
           {query.error}
+        </p>
+      )}
+
+      {isView && (
+        <p className="text-muted-foreground rounded-md border px-3 py-2 text-sm">
+          これはビューです。レコードの追加・編集・削除、構造の変更はできません（閲覧のみ）。
         </p>
       )}
 

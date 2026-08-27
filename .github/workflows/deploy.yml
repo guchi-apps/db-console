@@ -94,6 +94,7 @@ jobs:
           SIGNALY_WEBHOOK_URL: ${{ secrets.SIGNALY_WEBHOOK_URL }}
           NOTIFY_STATUS: ${{ job.status }}
           NOTIFY_APP: db-console
+          SIGNALY_RELEASE_WEBHOOK_URL: ${{ secrets.SIGNALY_RELEASE_WEBHOOK_URL }}
           NOTIFY_KIND: リリース
           NOTIFY_VERSION: ${{ needs.tag.outputs.tag }}
         run: bash .github/scripts/signaly-notify.sh
@@ -122,6 +123,8 @@ jobs:
       SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
       USERNAME: ${{ secrets.SERVER_USERNAME }}
       ALLOWED_EMAILS: ${{ secrets.ALLOWED_EMAILS }}
+      DB_CONSOLE_ADMIN_PASSWORD: ${{ secrets.DB_CONSOLE_ADMIN_PASSWORD }}
+      DB_CONSOLE_ADMIN_USER: ${{ secrets.DB_CONSOLE_ADMIN_USER }}
       DB_CONSOLE_DATA_PASSWORD: ${{ secrets.DB_CONSOLE_DATA_PASSWORD }}
       DB_CONSOLE_DATA_USER: ${{ secrets.DB_CONSOLE_DATA_USER }}
       DB_CONSOLE_SCHEMA_PASSWORD: ${{ secrets.DB_CONSOLE_SCHEMA_PASSWORD }}
@@ -207,6 +210,8 @@ jobs:
       SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
       USERNAME: ${{ secrets.SERVER_USERNAME }}
       ALLOWED_EMAILS: ${{ secrets.ALLOWED_EMAILS }}
+      DB_CONSOLE_ADMIN_PASSWORD: ${{ secrets.DB_CONSOLE_ADMIN_PASSWORD }}
+      DB_CONSOLE_ADMIN_USER: ${{ secrets.DB_CONSOLE_ADMIN_USER }}
       DB_CONSOLE_DATA_PASSWORD: ${{ secrets.DB_CONSOLE_DATA_PASSWORD }}
       DB_CONSOLE_DATA_USER: ${{ secrets.DB_CONSOLE_DATA_USER }}
       DB_CONSOLE_SCHEMA_PASSWORD: ${{ secrets.DB_CONSOLE_SCHEMA_PASSWORD }}
@@ -264,13 +269,15 @@ jobs:
           DB_CONSOLE_DATA_PASSWORD: ${{ env.DB_CONSOLE_DATA_PASSWORD }}
           DB_CONSOLE_SCHEMA_USER: ${{ env.DB_CONSOLE_SCHEMA_USER }}
           DB_CONSOLE_SCHEMA_PASSWORD: ${{ env.DB_CONSOLE_SCHEMA_PASSWORD }}
+          DB_CONSOLE_ADMIN_USER: ${{ env.DB_CONSOLE_ADMIN_USER }}
+          DB_CONSOLE_ADMIN_PASSWORD: ${{ env.DB_CONSOLE_ADMIN_PASSWORD }}
           TARGET_DIR: ${{ env.TARGET_DIR }}
         with:
           host: ${{ env.HOST }}
           username: ${{ env.USERNAME }}
           key: ${{ env.SSH_PRIVATE_KEY }}
           port: ${{ env.SSH_PORT }}
-          envs: DATABASE_URL,MIGRATE_DATABASE_URL,DB_USER,DB_PASSWORD,DB_HOST,DB_PORT,DB_NAME,ALLOWED_EMAILS,DB_CONSOLE_DATA_USER,DB_CONSOLE_DATA_PASSWORD,DB_CONSOLE_SCHEMA_USER,DB_CONSOLE_SCHEMA_PASSWORD,TARGET_DIR
+          envs: DATABASE_URL,MIGRATE_DATABASE_URL,DB_USER,DB_PASSWORD,DB_HOST,DB_PORT,DB_NAME,ALLOWED_EMAILS,DB_CONSOLE_DATA_USER,DB_CONSOLE_DATA_PASSWORD,DB_CONSOLE_SCHEMA_USER,DB_CONSOLE_SCHEMA_PASSWORD,DB_CONSOLE_ADMIN_USER,DB_CONSOLE_ADMIN_PASSWORD,TARGET_DIR
           script: |
             set -euo pipefail
             cd "${TARGET_DIR}"
@@ -304,6 +311,8 @@ jobs:
             update_env DB_CONSOLE_DATA_PASSWORD "$DB_CONSOLE_DATA_PASSWORD"
             update_env DB_CONSOLE_SCHEMA_USER "$DB_CONSOLE_SCHEMA_USER"
             update_env DB_CONSOLE_SCHEMA_PASSWORD "$DB_CONSOLE_SCHEMA_PASSWORD"
+            update_env DB_CONSOLE_ADMIN_USER "$DB_CONSOLE_ADMIN_USER"
+            update_env DB_CONSOLE_ADMIN_PASSWORD "$DB_CONSOLE_ADMIN_PASSWORD"
 
             echo "Installing production dependencies..."
             npm install --omit=dev --no-audit --prefer-offline
