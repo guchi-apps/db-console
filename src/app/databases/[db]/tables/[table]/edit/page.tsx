@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { getDatabaseEntry, modeAtLeast } from "@/lib/config";
-import { getTableColumns, getRowByPrimaryKey } from "@/lib/introspection";
+import { getTableColumns, getTableKind, getRowByPrimaryKey } from "@/lib/introspection";
 import { requireSessionForPage } from "@/lib/session";
 import { RowFormFields } from "@/components/row-form-fields";
 import { updateRowAction } from "../actions";
@@ -31,6 +31,11 @@ export default async function EditRowPage({
 
   const entry = await getDatabaseEntry(db);
   if (!entry || !modeAtLeast(entry.mode, "data-write") || !pkRaw) {
+    notFound();
+  }
+
+  // ビューはレコードを更新できないため、URLを直接叩かれても編集画面を出さない。
+  if ((await getTableKind(db, table)) === "view") {
     notFound();
   }
 

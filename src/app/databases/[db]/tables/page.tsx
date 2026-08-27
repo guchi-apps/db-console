@@ -53,17 +53,26 @@ export default async function TablesPage({
           <li key={table.name}>
             <Link
               href={`/databases/${db}/tables/${table.name}`}
-              className="flex items-center justify-between rounded-lg border p-3 hover:bg-accent"
+              className="flex items-center justify-between gap-2 rounded-lg border p-3 hover:bg-accent"
             >
-              <span className="font-medium">{table.name}</span>
-              <span className="text-muted-foreground text-xs">
-                {table.approximateRowCount ?? "-"} 件（概算）
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="truncate font-medium">{table.name}</span>
+                {table.kind === "view" && (
+                  <span className="shrink-0 rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-xs text-sky-700">
+                    ビュー
+                  </span>
+                )}
+              </span>
+              <span className="text-muted-foreground shrink-0 text-xs">
+                {table.kind === "view"
+                  ? "閲覧のみ"
+                  : `${table.approximateRowCount ?? "-"} 件（概算）`}
               </span>
             </Link>
           </li>
         ))}
         {tables.length === 0 && (
-          <li className="text-muted-foreground text-sm">テーブルがありません</li>
+          <li className="text-muted-foreground text-sm">テーブル・ビューがありません</li>
         )}
       </ul>
     </main>

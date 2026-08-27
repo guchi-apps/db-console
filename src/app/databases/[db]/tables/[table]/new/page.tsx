@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { getDatabaseEntry, modeAtLeast } from "@/lib/config";
-import { getTableColumns } from "@/lib/introspection";
+import { getTableColumns, getTableKind } from "@/lib/introspection";
 import { requireSessionForPage } from "@/lib/session";
 import { RowFormFields } from "@/components/row-form-fields";
 import { createRowAction } from "../actions";
@@ -20,6 +20,11 @@ export default async function NewRowPage({
 
   const entry = await getDatabaseEntry(db);
   if (!entry || !modeAtLeast(entry.mode, "data-write")) {
+    notFound();
+  }
+
+  // ビューにはレコードを追加できないため、URLを直接叩かれても入力画面を出さない。
+  if ((await getTableKind(db, table)) === "view") {
     notFound();
   }
 

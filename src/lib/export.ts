@@ -1,7 +1,7 @@
 import { escape as sqlEscape } from "mysql2";
 import type { RowDataPacket } from "mysql2";
 
-import { qualifyTable, quoteColumn } from "@/lib/identifier";
+import { assertBaseTableExists, qualifyTable, quoteColumn } from "@/lib/identifier";
 import { getPoolForOperation } from "@/lib/target-db";
 import { getTableColumns } from "@/lib/introspection";
 
@@ -62,12 +62,18 @@ export async function* streamTableCsvRows(
   }
 }
 
-/** SHOW CREATE TABLE の結果をそのまま構造出力として使う（DDLの再構築より正確・安全）。 */
+/**
+ * SHOW CREATE TABLE の結果をそのまま構造出力として使う（DDLの再構築より正確・安全）。
+ *
+ * ビューは対象外にする。ビューへの `SHOW CREATE TABLE` は SHOW VIEW 権限を要求して落ちるうえ、
+ * 出力できたとしても `CREATE VIEW` を「テーブル構造」として渡すことになるため。
+ */
 export async function getTableStructureSql(
   databaseName: string,
   tableName: string,
 ): Promise<string> {
   const pool = await getPoolForOperation(databaseName, "read-only");
+  await assertBaseTableExists(pool, databaseName, tableName);
   const qualifiedTable = qualifyTable(databaseName, tableName);
 
   const [rows] = await pool.query<RowDataPacket[]>(`SHOW CREATE TABLE ${qualifiedTable}`);

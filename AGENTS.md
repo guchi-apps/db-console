@@ -20,6 +20,25 @@ This version has breaking changes — APIs, conventions, and file structure may 
 識別子のエスケープ・SQLガード）に触れる変更は、影響がこのアプリの中で閉じない。テストの追加なしに
 振る舞いを変えないこと。
 
+### テーブルとビュー（VIEW）
+
+一覧・レコード閲覧はビューも対象にするが、**ビューは閲覧のみ**（#86）。実在確認の関数を
+`src/lib/identifier.ts` で2つに分けており、**書き込み・DDLの経路では必ず後者を使う**。
+
+| 関数 | 通すもの | 使う場所 |
+|---|---|---|
+| `assertTableExists()` | テーブル + ビュー | カラム・インデックス・レコードの読み取り |
+| `assertBaseTableExists()` | テーブルのみ（ビューは `ViewNotModifiableError`） | `insertRow`・`updateRow`・`deleteRows` と全DDL |
+
+**`SHOW CREATE VIEW` / ビューへの `SHOW CREATE TABLE` は使わない。** どちらも `SHOW VIEW` 権限が
+無いと `SHOW VIEW command denied` で落ちる。ビュー定義は `information_schema.views.view_definition`
+から読む——こちらは権限が無い場合にエラーではなく**空文字**を返すため、画面で「表示できない」と
+伝えるだけで済む。`getTableStructureSql()`（SQL出力）がビューを拒否し、構造画面でSQL出力の導線を
+出していないのも同じ理由。
+
+`SHOW VIEW` はローカルの `scripts/setup-db.sh` では両ロールへ付与済み。**本番VPSのロールには
+付いていない**ため、本番でビュー定義を表示するにはGRANTの追加が要る（#86 から切り出した手作業Issue）。
+
 ## アプリ名・アイコン
 
 利用者に見せる名前とアイコンの一次情報源は `src/lib/app-branding.tsx`（`APP_NAME` / 配色 /

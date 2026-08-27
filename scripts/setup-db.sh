@@ -106,16 +106,18 @@ SELECT * FROM (SELECT 'テスト投稿' AS t) AS tmp
 WHERE NOT EXISTS (SELECT 1 FROM \`wordpress\`.\`wp_posts_sample\`);
 
 -- 3. 管理対象DBへの通常操作用ロール（db_console_data 相当）
+--    SHOW VIEW は information_schema.views.view_definition（ビュー定義の表示）に必要。
+--    無くてもエラーにはならず定義が空文字で返るだけなので、権限が無い環境でも画面は動く。
 CREATE USER IF NOT EXISTS '${DB_CONSOLE_DATA_USER}'@'localhost' IDENTIFIED BY '${data_password_esc}';
 ALTER USER '${DB_CONSOLE_DATA_USER}'@'localhost' IDENTIFIED BY '${data_password_esc}';
-GRANT SELECT, INSERT, UPDATE, DELETE ON \`app_car\`.* TO '${DB_CONSOLE_DATA_USER}'@'localhost';
-GRANT SELECT, INSERT, UPDATE, DELETE ON \`app_asset_manager\`.* TO '${DB_CONSOLE_DATA_USER}'@'localhost';
-GRANT SELECT ON \`wordpress\`.* TO '${DB_CONSOLE_DATA_USER}'@'localhost';
+GRANT SELECT, INSERT, UPDATE, DELETE, SHOW VIEW ON \`app_car\`.* TO '${DB_CONSOLE_DATA_USER}'@'localhost';
+GRANT SELECT, INSERT, UPDATE, DELETE, SHOW VIEW ON \`app_asset_manager\`.* TO '${DB_CONSOLE_DATA_USER}'@'localhost';
+GRANT SELECT, SHOW VIEW ON \`wordpress\`.* TO '${DB_CONSOLE_DATA_USER}'@'localhost';
 
 -- 4. 管理対象DBへの構造変更用ロール（db_console_schema 相当。schema-writeのapp_asset_managerのみ）
 CREATE USER IF NOT EXISTS '${DB_CONSOLE_SCHEMA_USER}'@'localhost' IDENTIFIED BY '${schema_password_esc}';
 ALTER USER '${DB_CONSOLE_SCHEMA_USER}'@'localhost' IDENTIFIED BY '${schema_password_esc}';
-GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX ON \`app_asset_manager\`.* TO '${DB_CONSOLE_SCHEMA_USER}'@'localhost';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, SHOW VIEW ON \`app_asset_manager\`.* TO '${DB_CONSOLE_SCHEMA_USER}'@'localhost';
 
 FLUSH PRIVILEGES;
 EOSQL

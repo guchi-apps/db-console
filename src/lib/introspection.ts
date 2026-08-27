@@ -1,12 +1,14 @@
 import { escape as sqlEscape, type ResultSetHeader, type RowDataPacket } from "mysql2";
 
 import {
+  assertBaseTableExists,
   assertColumnExists,
   assertSafeColumnName,
   assertSafeDatabaseName,
   assertSafeIndexName,
   assertSafeTableName,
   assertTableExists,
+  IdentifierNotFoundError,
   qualifyTable,
   quoteColumn,
   quoteIdentifier,
@@ -19,8 +21,12 @@ export interface DatabaseInfo {
   defaultCollation: string | null;
 }
 
+/** 一覧・詳細画面で扱う対象の種別。ビューは閲覧のみを許可する。 */
+export type TableKind = "table" | "view";
+
 export interface TableSummary {
   name: string;
+  kind: TableKind;
   engine: string | null;
   approximateRowCount: number | null;
   comment: string | null;
@@ -81,27 +87,89 @@ export async function getDatabaseInfo(databaseName: string): Promise<DatabaseInf
   };
 }
 
-/** 指定DB内の許可テーブル一覧を取得する（information_schema.TABLES）。 */
+/** table_type（'BASE TABLE' / 'VIEW'）をアプリ内の種別へ変換する。 */
+function toTableKind(tableType: unknown): TableKind {
+  return String(tableType ?? "").toUpperCase().includes("VIEW") ? "view" : "table";
+}
+
+/**
+ * 指定DB内のテーブル・ビュー一覧を取得する（information_schema.TABLES）。
+ * ビューは engine が NULL・table_rows が NULL になるため、画面側で件数を `-` として扱う。
+ * SEQUENCE 等その他の table_type は対象外にする。
+ */
 export async function listTables(databaseName: string): Promise<TableSummary[]> {
   assertSafeDatabaseName(databaseName);
   const pool = await getPoolForOperation(databaseName, "read-only");
 
   const [rows] = await pool.query<RowDataPacket[]>(
-    `SELECT table_name AS table_name, engine AS engine, table_rows AS table_rows,
-            table_comment AS table_comment
+    `SELECT table_name AS table_name, table_type AS table_type, engine AS engine,
+            table_rows AS table_rows, table_comment AS table_comment
      FROM information_schema.tables
-     WHERE table_schema = ? AND table_type = 'BASE TABLE'
+     WHERE table_schema = ? AND table_type IN ('BASE TABLE', 'VIEW')
      ORDER BY table_name`,
     [databaseName],
   );
 
-  return rows.map((row) => ({
-    name: row.table_name as string,
-    engine: (row.engine as string) ?? null,
-    approximateRowCount:
-      row.table_rows === null ? null : Number(row.table_rows),
-    comment: (row.table_comment as string) || null,
-  }));
+  return rows.map((row) => {
+    const kind = toTableKind(row.table_type);
+    return {
+      name: row.table_name as string,
+      kind,
+      engine: (row.engine as string) ?? null,
+      approximateRowCount:
+        row.table_rows === null ? null : Number(row.table_rows),
+      // MariaDBはビューの table_comment に固定文字列 'VIEW' を入れる。利用者のコメントではないので落とす。
+      comment: kind === "view" ? null : (row.table_comment as string) || null,
+    };
+  });
+}
+
+/** 対象がテーブルかビューかを返す（存在しなければ IdentifierNotFoundError）。 */
+export async function getTableKind(
+  databaseName: string,
+  tableName: string,
+): Promise<TableKind> {
+  assertSafeDatabaseName(databaseName);
+  assertSafeTableName(tableName);
+  const pool = await getPoolForOperation(databaseName, "read-only");
+
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT table_type AS table_type FROM information_schema.tables
+     WHERE table_schema = ? AND table_name = ? LIMIT 1`,
+    [databaseName, tableName],
+  );
+  if (rows.length === 0) {
+    throw new IdentifierNotFoundError("テーブル", `${databaseName}.${tableName}`);
+  }
+  return toTableKind(rows[0].table_type);
+}
+
+/**
+ * ビューの定義（SELECT文）を取得する。閲覧専用。
+ *
+ * `SHOW CREATE VIEW` / `SHOW CREATE TABLE` は SHOW VIEW 権限を要求してエラーになるため使わない
+ * （db_console_data ロールは SELECT/INSERT/UPDATE/DELETE しか持っていない）。
+ * `information_schema.views` は権限が無い場合に view_definition が空文字で返るだけなので、
+ * 取得できなければ null を返して画面側で「表示できない」と伝える。
+ */
+export async function getViewDefinition(
+  databaseName: string,
+  viewName: string,
+): Promise<string | null> {
+  assertSafeDatabaseName(databaseName);
+  assertSafeTableName(viewName);
+  const pool = await getPoolForOperation(databaseName, "read-only");
+
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT view_definition AS view_definition FROM information_schema.views
+     WHERE table_schema = ? AND table_name = ? LIMIT 1`,
+    [databaseName, viewName],
+  );
+  if (rows.length === 0) {
+    throw new IdentifierNotFoundError("ビュー", `${databaseName}.${viewName}`);
+  }
+  const definition = String(rows[0].view_definition ?? "").trim();
+  return definition === "" ? null : definition;
 }
 
 /** テーブルのカラム一覧を ordinal_position 順に取得する。 */
@@ -303,7 +371,7 @@ export async function getRowByPrimaryKey(
   pkValues: Record<string, string>,
 ): Promise<Record<string, unknown> | null> {
   const pool = await getPoolForOperation(databaseName, "data-write");
-  await assertTableExists(pool, databaseName, tableName);
+  await assertBaseTableExists(pool, databaseName, tableName);
 
   const pkColumns = await getPrimaryKeyColumns(databaseName, tableName);
   if (pkColumns.length === 0) {
@@ -336,7 +404,7 @@ export async function insertRow(
   data: Record<string, unknown>,
 ): Promise<InsertRowResult> {
   const pool = await getPoolForOperation(databaseName, "data-write");
-  await assertTableExists(pool, databaseName, tableName);
+  await assertBaseTableExists(pool, databaseName, tableName);
 
   const columnNames = Object.keys(data);
   for (const column of columnNames) {
@@ -366,7 +434,7 @@ export async function updateRow(
   data: Record<string, unknown>,
 ): Promise<{ affectedRows: number }> {
   const pool = await getPoolForOperation(databaseName, "data-write");
-  await assertTableExists(pool, databaseName, tableName);
+  await assertBaseTableExists(pool, databaseName, tableName);
 
   const pkColumns = await getPrimaryKeyColumns(databaseName, tableName);
   if (pkColumns.length === 0) {
@@ -403,7 +471,7 @@ export async function deleteRows(
   pkValuesList: Record<string, string>[],
 ): Promise<{ affectedRows: number }> {
   const pool = await getPoolForOperation(databaseName, "data-write");
-  await assertTableExists(pool, databaseName, tableName);
+  await assertBaseTableExists(pool, databaseName, tableName);
 
   const pkColumns = await getPrimaryKeyColumns(databaseName, tableName);
   if (pkColumns.length === 0) {
@@ -439,7 +507,7 @@ export async function renameTable(
   newTableName: string,
 ): Promise<void> {
   const pool = await getPoolForOperation(databaseName, "schema-write");
-  await assertTableExists(pool, databaseName, oldTableName);
+  await assertBaseTableExists(pool, databaseName, oldTableName);
   assertSafeTableName(newTableName);
 
   const qualifiedOld = qualifyTable(databaseName, oldTableName);
@@ -450,7 +518,7 @@ export async function renameTable(
 /** テーブルを削除する（破壊的操作。呼び出し側で再認証・対象名入力確認を行うこと）。 */
 export async function dropTable(databaseName: string, tableName: string): Promise<void> {
   const pool = await getPoolForOperation(databaseName, "schema-write");
-  await assertTableExists(pool, databaseName, tableName);
+  await assertBaseTableExists(pool, databaseName, tableName);
 
   const qualifiedTable = qualifyTable(databaseName, tableName);
   await pool.query(`DROP TABLE ${qualifiedTable}`);
@@ -459,7 +527,7 @@ export async function dropTable(databaseName: string, tableName: string): Promis
 /** テーブルを空データ化する（破壊的操作。呼び出し側で再認証・対象名入力確認を行うこと）。 */
 export async function truncateTable(databaseName: string, tableName: string): Promise<void> {
   const pool = await getPoolForOperation(databaseName, "schema-write");
-  await assertTableExists(pool, databaseName, tableName);
+  await assertBaseTableExists(pool, databaseName, tableName);
 
   const qualifiedTable = qualifyTable(databaseName, tableName);
   await pool.query(`TRUNCATE TABLE ${qualifiedTable}`);
@@ -482,7 +550,7 @@ export async function addColumn(
   input: ColumnDefinitionInput,
 ): Promise<void> {
   const pool = await getPoolForOperation(databaseName, "schema-write");
-  await assertTableExists(pool, databaseName, tableName);
+  await assertBaseTableExists(pool, databaseName, tableName);
   assertSafeColumnName(input.columnName);
 
   const qualifiedTable = qualifyTable(databaseName, tableName);
@@ -510,7 +578,7 @@ export async function modifyColumn(
   input: ColumnModificationInput,
 ): Promise<void> {
   const pool = await getPoolForOperation(databaseName, "schema-write");
-  await assertTableExists(pool, databaseName, tableName);
+  await assertBaseTableExists(pool, databaseName, tableName);
   await assertColumnExists(pool, databaseName, tableName, columnName);
 
   const qualifiedTable = qualifyTable(databaseName, tableName);
@@ -538,7 +606,7 @@ export async function dropColumn(
   columnName: string,
 ): Promise<void> {
   const pool = await getPoolForOperation(databaseName, "schema-write");
-  await assertTableExists(pool, databaseName, tableName);
+  await assertBaseTableExists(pool, databaseName, tableName);
   await assertColumnExists(pool, databaseName, tableName, columnName);
 
   const qualifiedTable = qualifyTable(databaseName, tableName);
@@ -554,7 +622,7 @@ export async function addIndex(
   input: { indexName: string; columns: string[]; unique: boolean },
 ): Promise<void> {
   const pool = await getPoolForOperation(databaseName, "schema-write");
-  await assertTableExists(pool, databaseName, tableName);
+  await assertBaseTableExists(pool, databaseName, tableName);
   if (input.columns.length === 0) {
     throw new Error("インデックス対象のカラムを1つ以上指定してください");
   }
@@ -578,7 +646,7 @@ export async function addPrimaryKey(
   columns: string[],
 ): Promise<void> {
   const pool = await getPoolForOperation(databaseName, "schema-write");
-  await assertTableExists(pool, databaseName, tableName);
+  await assertBaseTableExists(pool, databaseName, tableName);
   if (columns.length === 0) {
     throw new Error("主キーにするカラムを1つ以上指定してください");
   }
@@ -598,7 +666,7 @@ export async function dropIndex(
   indexName: string,
 ): Promise<void> {
   const pool = await getPoolForOperation(databaseName, "schema-write");
-  await assertTableExists(pool, databaseName, tableName);
+  await assertBaseTableExists(pool, databaseName, tableName);
 
   const qualifiedTable = qualifyTable(databaseName, tableName);
   if (indexName === "PRIMARY") {
