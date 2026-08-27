@@ -53,6 +53,41 @@ export function quoteIdentifier(name: string): string {
   return `\`${name.replace(/`/g, "``")}\``;
 }
 
+/**
+ * GRANT / REVOKE の対象DB名を、そのDBだけに一致するパターンへ変換する（`app_car` → `app\_car`）。
+ *
+ * **これはただのエスケープではなく、GRANTを通すために必須の変換である。**
+ * db_console_admin ロールは `app\_%` というパターンに対して権限を持つが、MySQL/MariaDBは
+ * GRANT文のDB名を「パターン」として扱い、付与する側が持つパターンに含まれることを要求する。
+ * `GRANT ... ON \`app_car\`.*` は `_` がワイルドカード扱いのまま比較されて
+ * `Access denied ... to database 'app_car'` になり、`\_` へエスケープすると通る
+ * （MySQL 8.0.46 / #91 で確認）。付与された権限は `app_car` にだけ効く。
+ */
+export function toDatabaseGrantPattern(databaseName: string): string {
+  assertSafeDatabaseName(databaseName);
+  return databaseName.replace(/([\\_%])/g, "\\$1");
+}
+
+/**
+ * mysql.db の Db カラム（GRANTパターン）をDB名へ戻す。
+ * ワイルドカード（エスケープされていない `%` や `_`）を含む行は複数DBに掛かる指定のため、
+ * DB名としては解釈できず null を返す。
+ */
+export function fromDatabaseGrantPattern(pattern: string): string | null {
+  let result = "";
+  for (let i = 0; i < pattern.length; i++) {
+    const char = pattern[i];
+    if (char === "\\" && i + 1 < pattern.length) {
+      result += pattern[i + 1];
+      i++;
+      continue;
+    }
+    if (char === "%" || char === "_") return null;
+    result += char;
+  }
+  return result;
+}
+
 /** `db`.`table` 形式の完全修飾テーブル名を組み立てる（両方の文字種チェックを行った上で）。 */
 export function qualifyTable(databaseName: string, tableName: string): string {
   assertSafeDatabaseName(databaseName);

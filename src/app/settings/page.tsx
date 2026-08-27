@@ -1,12 +1,14 @@
 import Link from "next/link";
 
 import { APP_VERSION } from "@/lib/app-version";
-import { getDatabasesConfig } from "@/lib/config";
+import { MANAGED_NAME_PREFIX, getDatabasesConfig } from "@/lib/config";
+import { isAdminRoleConfigured } from "@/lib/admin-db";
 import { requireSessionForPage } from "@/lib/session";
 import { listRegistrableDatabaseNames } from "@/lib/target-db";
 import { ChangelogDialog } from "@/components/changelog-dialog";
 import { DeleteManagedDatabaseButton } from "@/components/delete-managed-database-button";
 import {
+  createDatabaseAction,
   createManagedDatabaseAction,
   deleteManagedDatabaseAction,
   updateManagedDatabaseAction,
@@ -25,6 +27,7 @@ export default async function SettingsPage({
 }) {
   const session = await requireSessionForPage();
   const { error } = await searchParams;
+  const adminConfigured = isAdminRoleConfigured();
   const databases = await getDatabasesConfig();
   const registeredNames = new Set(databases.map((entry) => entry.name));
   const registrableNames = (await listRegistrableDatabaseNames()).filter(
@@ -50,9 +53,9 @@ export default async function SettingsPage({
         <h1 className="text-xl font-semibold">設定: 管理対象データベース</h1>
         <p className="text-muted-foreground text-sm">{session.user.email} でログイン中</p>
         <p className="text-muted-foreground text-sm">
-          ここで管理するのは表示名・操作モードの論理的な設定のみです。実際にDBへ接続・操作できるかは
-          MariaDB側の権限（db_console_data / db_console_schema ユーザーへのGRANT）に依存するため、
-          新しいDBを追加する場合は事前にインフラ側で権限を付与しておく必要があります。
+          「{MANAGED_NAME_PREFIX}」で始まるDBはこの画面から新規作成でき、閲覧・編集用ロールへの
+          権限付与まで自動で行います。それ以外の既存DBは、MariaDB側で db_console_data /
+          db_console_schema へGRANT済みのものだけを「既存DBを登録」から追加できます。
         </p>
       </div>
 
@@ -121,7 +124,59 @@ export default async function SettingsPage({
       </ul>
 
       <section className="flex flex-col gap-2 rounded-lg border p-4">
-        <h2 className="font-medium">新規登録</h2>
+        <h2 className="font-medium">DBを新規作成</h2>
+        {adminConfigured ? (
+          <form action={createDatabaseAction} className="flex flex-col gap-2">
+            <input
+              name="name"
+              defaultValue={MANAGED_NAME_PREFIX}
+              required
+              placeholder={`${MANAGED_NAME_PREFIX}myapp`}
+              aria-label="DB名"
+              className="rounded-md border px-3 py-2 font-mono text-sm"
+            />
+            <input
+              name="label"
+              placeholder="表示名（例: 経費管理）"
+              required
+              aria-label="表示名"
+              className="rounded-md border px-3 py-2 text-sm"
+            />
+            <select
+              name="mode"
+              defaultValue="data-write"
+              aria-label="操作モード"
+              className="rounded-md border px-3 py-2 text-sm"
+            >
+              {MODE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-muted-foreground text-xs">
+              utf8mb4 / utf8mb4_unicode_ci で作成し、選んだ操作モードに応じて
+              db_console_data（構造変更可なら db_console_schema にも）へ権限を付与します。
+            </p>
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                className="hover:bg-accent min-h-11 rounded-md border px-3 text-sm"
+              >
+                作成
+              </button>
+            </div>
+          </form>
+        ) : (
+          <p className="text-muted-foreground text-sm">
+            管理ロール（DB_CONSOLE_ADMIN_USER / DB_CONSOLE_ADMIN_PASSWORD）が未設定のため、
+            この画面からDBを作成できません。
+          </p>
+        )}
+      </section>
+
+      <section className="flex flex-col gap-2 rounded-lg border p-4">
+        <h2 className="font-medium">既存DBを登録</h2>
         {registrableNames.length === 0 ? (
           <p className="text-muted-foreground text-sm">
             db_console_data / db_console_schema ロールがGRANTされている、未登録のDBが見つかりません。
@@ -172,6 +227,21 @@ export default async function SettingsPage({
             </div>
           </form>
         )}
+      </section>
+
+      <section className="flex flex-col gap-2 rounded-lg border p-4">
+        <h2 className="font-medium">DBユーザー</h2>
+        <p className="text-muted-foreground text-sm">
+          「{MANAGED_NAME_PREFIX}」で始まるDBユーザーの作成・権限変更・削除を行います。
+        </p>
+        <div className="flex justify-end">
+          <Link
+            href="/settings/users"
+            className="hover:bg-accent min-h-11 rounded-md border px-3 py-2 text-sm"
+          >
+            DBユーザーを管理
+          </Link>
+        </div>
       </section>
 
       <section className="flex flex-col gap-3 rounded-lg border p-4">
