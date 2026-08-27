@@ -122,6 +122,13 @@ Issue専用ブランチは `develop` から作成し、ブランチ名は **`iss
 エージェントはこのフローを自分で起動しない。バージョンを手で書き換える必要もない
 （`package.json` の `version` はバンプPRだけが更新する）。
 
+**実装エージェントは `npm version` 系コマンドを実行せず、`package.json` の `version` と
+更新履歴（`src/lib/changelog.ts`）を変更しない。** バンプPRのなかで `npm version` が
+`scripts/version-changelog.mjs`（`"version"` lifecycle）を呼び、リリース差分から生成した
+利用者向けの文面を `APP_CHANGELOG` の先頭へ挿入する。Issueごとに手で追記すると、
+並行して進む他のIssueと必ずコンフリクトする。画面表示は設定画面の「アプリ情報」
+（`src/components/changelog-dialog.tsx`）。
+
 ### 条件を表すラベル（進捗とは別軸）
 
 Status = 今どこにいるか、Label = どんな性質・条件があるか、という役割分担にしている。
