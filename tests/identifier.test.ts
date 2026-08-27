@@ -3,6 +3,8 @@ import type { Pool } from "mysql2/promise";
 import {
   assertBaseTableExists,
   assertTableExists,
+  fromDatabaseGrantPattern,
+  toDatabaseGrantPattern,
   IdentifierNotFoundError,
   InvalidIdentifierError,
   qualifyTable,
@@ -91,5 +93,29 @@ describe("assertTableExists / assertBaseTableExists", () => {
     await assertBaseTableExists(pool, "app_car", "vehicles");
     expect(queries[0].params).toEqual(["app_car", "vehicles"]);
     expect(queries[0].sql).not.toContain("app_car");
+  });
+});
+
+describe("toDatabaseGrantPattern / fromDatabaseGrantPattern", () => {
+  it("アンダースコアをエスケープして、そのDBだけに一致するパターンにする", () => {
+    expect(toDatabaseGrantPattern("app_car")).toBe("app\\_car");
+    expect(toDatabaseGrantPattern("appcar")).toBe("appcar");
+  });
+
+  it("不正な文字を含むDB名は拒否する", () => {
+    expect(() => toDatabaseGrantPattern("app car")).toThrow(InvalidIdentifierError);
+    expect(() => toDatabaseGrantPattern("app%")).toThrow(InvalidIdentifierError);
+  });
+
+  it("エスケープしたパターンはDB名へ戻せる", () => {
+    for (const name of ["app_car", "app_asset_manager", "appcar"]) {
+      expect(fromDatabaseGrantPattern(toDatabaseGrantPattern(name))).toBe(name);
+    }
+  });
+
+  it("複数DBに掛かるワイルドカード指定はDB名へ戻さない", () => {
+    expect(fromDatabaseGrantPattern("app\\_%")).toBeNull();
+    expect(fromDatabaseGrantPattern("app_car")).toBeNull();
+    expect(fromDatabaseGrantPattern("%")).toBeNull();
   });
 });

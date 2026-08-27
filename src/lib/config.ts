@@ -12,6 +12,31 @@ export const FORBIDDEN_DATABASE_NAMES = new Set([
   "sys",
 ]);
 
+// このコンソールが「作成・管理してよい」とみなす名前の接頭辞（#91）。
+// VPS上には他アプリの実データを持つDBやシステム用のアカウントが同居しているため、
+// 新規作成・権限変更の対象は app_ で始まるDB・ユーザーだけに限定する。
+// 既存の管理対象DB（wordpress 等）の登録・閲覧はこの制限の対象外で、
+// あくまで「このアプリが新しく作る・権限を書き換える」対象を絞るための制限。
+export const MANAGED_NAME_PREFIX = "app_";
+
+export class UnmanagedNameError extends Error {
+  constructor(kind: string, value: string) {
+    super(`${kind}は「${MANAGED_NAME_PREFIX}」で始まる必要があります: ${value}`);
+    this.name = "UnmanagedNameError";
+  }
+}
+
+export function isManagedName(name: string): boolean {
+  return name.startsWith(MANAGED_NAME_PREFIX) && name.length > MANAGED_NAME_PREFIX.length;
+}
+
+/** 作成・権限変更の対象にしてよい名前かを確認する（違反時は例外）。 */
+export function assertManagedName(kind: string, name: string): void {
+  if (!isManagedName(name)) {
+    throw new UnmanagedNameError(kind, name);
+  }
+}
+
 export const DATABASE_MODES = ["read-only", "data-write", "schema-write"] as const;
 export type DatabaseMode = (typeof DATABASE_MODES)[number];
 

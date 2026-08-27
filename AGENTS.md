@@ -39,6 +39,35 @@ This version has breaking changes — APIs, conventions, and file structure may 
 `SHOW VIEW` はローカルの `scripts/setup-db.sh` では両ロールへ付与済み。**本番VPSのロールには
 付いていない**ため、本番でビュー定義を表示するにはGRANTの追加が要る（#86 から切り出した手作業Issue）。
 
+### DBの作成とDBユーザーの管理（#91）
+
+接続ロールは3つあり、**用途ごとにプールを分けている**。強い権限を持つ管理ロールは
+`src/lib/admin-db.ts` の `getAdminPool()` からしか触らない（SQL実行画面は
+`getPoolForOperation()` 経由の data/schema プールしか使わないため、画面から任意の
+GRANT文を流す経路は無い、という前提を壊さないこと）。
+
+| ロール | 権限 | 使う場所 |
+|---|---|---|
+| `db_console_data` | 管理対象DBへの SELECT/INSERT/UPDATE/DELETE | レコード操作 |
+| `db_console_schema` | + CREATE/ALTER/DROP/INDEX | DDL |
+| `db_console_admin` | `` `app\_%` `` へ GRANT OPTION 付き、グローバルの `CREATE USER`、`mysql.user`/`mysql.db` の SELECT | DB作成・DBユーザー管理（`src/lib/admin-db.ts`・`src/lib/db-users.ts`）だけ |
+
+**GRANT / REVOKE のDB名は `toDatabaseGrantPattern()`（`src/lib/identifier.ts`）でエスケープする。**
+MySQL/MariaDBはGRANT文のDB名を「パターン」として扱い、付与する側が持つパターンに含まれることを
+要求する。管理ロールの権限は `` `app\_%` `` なので、`GRANT ... ON \`app_car\`.*` は `_` が
+ワイルドカードのまま比較されて `Access denied ... to database 'app_car'` で落ちる。
+`` `app\_car` `` へエスケープすると通り、効果は `app_car` だけに掛かる（MySQL 8.0.46 で確認）。
+`mysql.db` の `Db` カラムにもエスケープ済みの形で入るため、読むときは
+`fromDatabaseGrantPattern()` でDB名へ戻す。
+
+**GRANTの直後に接続プールを張り直す必要は無い。** このアプリは `USE` を発行せず既定DBも持たない
+ため、完全修飾名でのアクセスは毎回ACLを引き直す（GRANT前から張っていたコネクションで新DBが
+見えることを実測済み。#91）。
+
+作成・権限変更の対象は `app_` で始まるDB・ユーザーだけ（`MANAGED_NAME_PREFIX`）。パスワードは
+保存せず、作成・再発行の直後に画面で1度だけ表示する。**本番VPSには `db_console_admin` ロールが
+無い**ため、作られるまで本番の画面には「未設定」と出る（#91 から切り出した手作業Issue）。
+
 ## アプリ名・アイコン
 
 利用者に見せる名前とアイコンの一次情報源は `src/lib/app-branding.tsx`（`APP_NAME` / 配色 /

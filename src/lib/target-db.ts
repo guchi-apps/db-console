@@ -13,7 +13,7 @@ import { FORBIDDEN_DATABASE_NAMES, getDatabaseEntry, modeAtLeast, type DatabaseM
 let dataPool: Pool | null = null;
 let schemaPool: Pool | null = null;
 
-function createPool(user: string, password: string): Pool {
+export function createTargetPool(user: string, password: string): Pool {
   return mysql.createPool({
     // TARGET_DB_HOST/PORT は、ローカル開発からSSHトンネル経由で本番データを
     // 参照する場合など、管理対象DBの接続先がdb-console自身のメタデータDB（DB_HOST/DB_PORT）
@@ -32,7 +32,7 @@ function createPool(user: string, password: string): Pool {
 /** レコードの閲覧・追加・更新・削除に使う通常操作用ロール（db_console_data）。 */
 export function getDataPool(): Pool {
   if (!dataPool) {
-    dataPool = createPool(
+    dataPool = createTargetPool(
       process.env.DB_CONSOLE_DATA_USER!,
       process.env.DB_CONSOLE_DATA_PASSWORD!,
     );
@@ -43,7 +43,7 @@ export function getDataPool(): Pool {
 /** テーブル・カラム・インデックスのDDL操作に使う構造変更用ロール（db_console_schema）。 */
 export function getSchemaPool(): Pool {
   if (!schemaPool) {
-    schemaPool = createPool(
+    schemaPool = createTargetPool(
       process.env.DB_CONSOLE_SCHEMA_USER!,
       process.env.DB_CONSOLE_SCHEMA_PASSWORD!,
     );
