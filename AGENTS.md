@@ -20,6 +20,17 @@ This version has breaking changes — APIs, conventions, and file structure may 
 識別子のエスケープ・SQLガード）に触れる変更は、影響がこのアプリの中で閉じない。テストの追加なしに
 振る舞いを変えないこと。
 
+## アプリ名・アイコン
+
+利用者に見せる名前とアイコンの一次情報源は `src/lib/app-branding.tsx`（`APP_NAME` / 配色 /
+`AppIconGlyph`）。`layout.tsx`・`manifest.ts`・`icon.tsx`・`apple-icon.tsx`・`icons/[size]/route.tsx`・
+ログイン画面はすべてここを参照する。**各ファイルへ名前や色を直接書かない。**
+`db-console` はリポジトリ名・パッケージ名・PM2のプロセス名として使い続け、表示名だけ `DB Console`。
+
+**アイコンのパスは `src/proxy.ts` の `matcher` から除外する。** 未ログインでも取得できないと、
+ログイン画面のタブアイコンとホーム画面へ追加したときのアイコンが `/login` へのリダイレクトになる。
+除外リストの `icon` は前方一致なので `/icons/*` も一緒に外れるが、`/apple-icon` は別途書く必要がある。
+
 ## 検証コマンド
 
 **`typecheck` の npm script は無い。** CI（`.github/workflows/ci.yml`）は `npx tsc --noEmit` を直接
@@ -31,6 +42,14 @@ This version has breaking changes — APIs, conventions, and file structure may 
 | 型チェック | `npx tsc --noEmit` |
 | テスト | `npm test`（vitest） |
 | ビルド | 下記のとおり環境変数が要る |
+
+**`npm test` はコンポーネントを描画できない。** `vitest.config.ts` は `environment: "node"`・
+`include: ["tests/**/*.test.ts"]`（`.tsx` は対象外）で、`jsdom`・`@testing-library/react`・
+`@vitejs/plugin-react` は devDependencies にあるだけで使われていない。描画を確かめたいときは、
+`plugins: [react()]`・`environment: "jsdom"`・`.tsx` を含む一時の vitest 設定を作って
+`npx vitest run --config <一時設定>` で実行する（**設定ファイルはリポジトリ内に置くこと。**
+リポジトリ外に置くと `vitest/config` を解決できず起動に失敗する）。常設したい場合は
+テスト設定そのものの変更になるため、その旨をIssueで相談する。
 
 **`npm run build` は素で実行すると落ちる。** `/auth/callback` のページデータ収集で Supabase の
 URLが `undefined` になり `ERR_INVALID_URL` で失敗する。`.env.local` が無い環境（クローン直後・
@@ -121,6 +140,13 @@ Issue専用ブランチは `develop` から作成し、ブランチ名は **`iss
 
 エージェントはこのフローを自分で起動しない。バージョンを手で書き換える必要もない
 （`package.json` の `version` はバンプPRだけが更新する）。
+
+**実装エージェントは `npm version` 系コマンドを実行せず、`package.json` の `version` と
+更新履歴（`src/lib/changelog.ts`）を変更しない。** バンプPRのなかで `npm version` が
+`scripts/version-changelog.mjs`（`"version"` lifecycle）を呼び、リリース差分から生成した
+利用者向けの文面を `APP_CHANGELOG` の先頭へ挿入する。Issueごとに手で追記すると、
+並行して進む他のIssueと必ずコンフリクトする。画面表示は設定画面の「アプリ情報」
+（`src/components/changelog-dialog.tsx`）。
 
 ### 条件を表すラベル（進捗とは別軸）
 

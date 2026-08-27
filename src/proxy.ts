@@ -58,8 +58,11 @@ export async function proxy(request: NextRequest) {
   return supabaseResponse;
 }
 
+// アイコン類（/icon・/icons/*・/apple-icon）は未ログインでも取得できるようにする。
+// ログイン画面のタブアイコンとホーム画面へ追加したときのアイコンはセッションが無い状態で
+// 取得されるため、ここを通すと /login へのリダイレクトが返り、アイコンが表示されない。
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|icon|sw.js).*)",
+    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|icon|apple-icon|sw.js).*)",
   ],
 };

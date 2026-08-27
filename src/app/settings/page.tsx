@@ -1,8 +1,10 @@
 import Link from "next/link";
 
+import { APP_VERSION } from "@/lib/app-version";
 import { getDatabasesConfig } from "@/lib/config";
 import { requireSessionForPage } from "@/lib/session";
 import { listRegistrableDatabaseNames } from "@/lib/target-db";
+import { ChangelogDialog } from "@/components/changelog-dialog";
 import { DeleteManagedDatabaseButton } from "@/components/delete-managed-database-button";
 import {
   createManagedDatabaseAction,
@@ -170,6 +172,16 @@ export default async function SettingsPage({
             </div>
           </form>
         )}
+      </section>
+
+      <section className="flex flex-col gap-3 rounded-lg border p-4">
+        <h2 className="font-medium">アプリ情報</h2>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-muted-foreground text-sm">
+            バージョン <span className="tabular-nums">v{APP_VERSION}</span>
+          </p>
+          <ChangelogDialog currentVersion={APP_VERSION} />
+        </div>
       </section>
     </main>
   );

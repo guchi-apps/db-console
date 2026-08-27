@@ -1,9 +1,10 @@
 {
   "name": "db-console",
-  "version": "0.2.6",
+  "version": "0.3.0",
   "private": true,
   "scripts": {
     "postinstall": "prisma generate",
+    "version": "node scripts/version-changelog.mjs",
     "dev": "bash -c 'set -a; [ -f .env.local ] && source .env.local; set +a; bash scripts/construct-database-url.sh next dev'",
     "build": "next build",
     "start": "next start",
