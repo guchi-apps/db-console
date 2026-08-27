@@ -38,7 +38,9 @@ jobs:
     uses: guchi-apps/issue-deck/.github/workflows/reusable-release-develop-to-main.yml@workflows/v27
     # バージョンの読み書きに関する3つのinput（version-file・version-query・bump-command）は
     # すべて既定値でよい。このリポジトリはルートのpackage.jsonに version を持ち、npmを使い、
-    # 更新履歴ファイルを持たない（"version" lifecycleスクリプトも定義していない）ため。
+    # "version" lifecycleスクリプト（scripts/version-changelog.mjs）を定義しているため
+    # （既定の `npm version` 経由で呼ばれ、RELEASE_CHANGELOG・RELEASE_USAGE を
+    # src/lib/changelog.ts の先頭へ挿入する。#8）。
     with:
       # pushトリガー（バンプPRのマージ）で起動したときは`inputs`自体が無いため空文字を渡す。
       # そちらの実行はdevelop→mainのPR作成だけを行い、上げ幅を使わない。

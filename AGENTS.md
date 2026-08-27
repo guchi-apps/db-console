@@ -43,6 +43,14 @@ This version has breaking changes — APIs, conventions, and file structure may 
 | テスト | `npm test`（vitest） |
 | ビルド | 下記のとおり環境変数が要る |
 
+**`npm test` はコンポーネントを描画できない。** `vitest.config.ts` は `environment: "node"`・
+`include: ["tests/**/*.test.ts"]`（`.tsx` は対象外）で、`jsdom`・`@testing-library/react`・
+`@vitejs/plugin-react` は devDependencies にあるだけで使われていない。描画を確かめたいときは、
+`plugins: [react()]`・`environment: "jsdom"`・`.tsx` を含む一時の vitest 設定を作って
+`npx vitest run --config <一時設定>` で実行する（**設定ファイルはリポジトリ内に置くこと。**
+リポジトリ外に置くと `vitest/config` を解決できず起動に失敗する）。常設したい場合は
+テスト設定そのものの変更になるため、その旨をIssueで相談する。
+
 **`npm run build` は素で実行すると落ちる。** `/auth/callback` のページデータ収集で Supabase の
 URLが `undefined` になり `ERR_INVALID_URL` で失敗する。`.env.local` が無い環境（クローン直後・
 GitHub Actions の無人実行）では、CI と同じプレースホルダーを渡して実行する。
@@ -132,6 +140,13 @@ Issue専用ブランチは `develop` から作成し、ブランチ名は **`iss
 
 エージェントはこのフローを自分で起動しない。バージョンを手で書き換える必要もない
 （`package.json` の `version` はバンプPRだけが更新する）。
+
+**実装エージェントは `npm version` 系コマンドを実行せず、`package.json` の `version` と
+更新履歴（`src/lib/changelog.ts`）を変更しない。** バンプPRのなかで `npm version` が
+`scripts/version-changelog.mjs`（`"version"` lifecycle）を呼び、リリース差分から生成した
+利用者向けの文面を `APP_CHANGELOG` の先頭へ挿入する。Issueごとに手で追記すると、
+並行して進む他のIssueと必ずコンフリクトする。画面表示は設定画面の「アプリ情報」
+（`src/components/changelog-dialog.tsx`）。
 
 ### 条件を表すラベル（進捗とは別軸）
 
