@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Outfit, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
+import { APP_DESCRIPTION, APP_NAME } from "@/lib/app-branding";
 import { RegisterServiceWorker } from "@/components/register-service-worker";
 import { BottomNav } from "@/components/bottom-nav";
 import { getSession } from "@/lib/session";
@@ -17,8 +18,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "db-console",
-  description: "スマートフォン向けMariaDB管理コンソール",
+  title: APP_NAME,
+  description: APP_DESCRIPTION,
+  applicationName: APP_NAME,
+  // iOSでホーム画面に追加したときの表示名と、スタンドアロン起動の指定。
+  // iOSはmanifestのnameよりこちらを優先する。
+  appleWebApp: { capable: true, title: APP_NAME, statusBarStyle: "default" },
 };
 
 export default async function RootLayout({
