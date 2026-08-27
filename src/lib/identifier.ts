@@ -17,6 +17,14 @@ export class IdentifierNotFoundError extends Error {
   }
 }
 
+/** ビュー（VIEW）に対して、ビューでは成立しない書き込み・構造変更を行おうとしたときのエラー。 */
+export class ViewNotModifiableError extends Error {
+  constructor(value: string) {
+    super(`${value} はビューのため、この操作はできません（閲覧のみ可能です）`);
+    this.name = "ViewNotModifiableError";
+  }
+}
+
 /** DB名・テーブル名・カラム名・インデックス名に共通の文字種チェック。 */
 function assertSafeIdentifierName(kind: string, name: string): void {
   if (!IDENTIFIER_PATTERN.test(name)) {
@@ -58,21 +66,53 @@ export function quoteColumn(columnName: string): string {
   return quoteIdentifier(columnName);
 }
 
-/** information_schema に対して実在確認を行う。SELECTのみで完結するため data-write 権限で実行できる。 */
+/**
+ * information_schema でテーブル・ビューの実在確認を行い、その table_type を返す。
+ * SELECTのみで完結するため data-write 権限で実行できる。
+ */
+async function queryTableType(
+  pool: Pool,
+  databaseName: string,
+  tableName: string,
+): Promise<string> {
+  assertSafeDatabaseName(databaseName);
+  assertSafeTableName(tableName);
+
+  const [rows] = await pool.query(
+    `SELECT table_type AS table_type FROM information_schema.tables
+     WHERE table_schema = ? AND table_name = ? LIMIT 1`,
+    [databaseName, tableName],
+  );
+  const row = (rows as Record<string, unknown>[])[0];
+  if (!row) {
+    throw new IdentifierNotFoundError("テーブル", `${databaseName}.${tableName}`);
+  }
+  return String(row.table_type ?? "");
+}
+
+/**
+ * 実在確認を行う（ビューも通す）。レコード閲覧・カラム一覧など、ビューでも成立する読み取り経路で使う。
+ */
 export async function assertTableExists(
   pool: Pool,
   databaseName: string,
   tableName: string,
 ): Promise<void> {
-  assertSafeDatabaseName(databaseName);
-  assertSafeTableName(tableName);
+  await queryTableType(pool, databaseName, tableName);
+}
 
-  const [rows] = await pool.query(
-    `SELECT 1 FROM information_schema.tables WHERE table_schema = ? AND table_name = ? LIMIT 1`,
-    [databaseName, tableName],
-  );
-  if ((rows as unknown[]).length === 0) {
-    throw new IdentifierNotFoundError("テーブル", `${databaseName}.${tableName}`);
+/**
+ * 実在確認を行ったうえで、対象がビューなら拒否する。レコードの追加・更新・削除とDDLは
+ * ビューでは成立しないため、画面の導線を消すだけでなくこの関数でSQL実行の手前で止める。
+ */
+export async function assertBaseTableExists(
+  pool: Pool,
+  databaseName: string,
+  tableName: string,
+): Promise<void> {
+  const tableType = await queryTableType(pool, databaseName, tableName);
+  if (tableType.toUpperCase().includes("VIEW")) {
+    throw new ViewNotModifiableError(`${databaseName}.${tableName}`);
   }
 }
 

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { getDatabaseEntry, modeAtLeast } from "@/lib/config";
-import { getTableRows } from "@/lib/introspection";
+import { getTableKind, getTableRows } from "@/lib/introspection";
 import { requireSessionForPage } from "@/lib/session";
 import { truncateTableAction, dropTableAction } from "../schema-actions";
 
@@ -19,6 +19,11 @@ export default async function TableDangerPage({
 
   const entry = await getDatabaseEntry(db);
   if (!entry || !modeAtLeast(entry.mode, "schema-write")) {
+    notFound();
+  }
+
+  // ビューは TRUNCATE も DROP TABLE も成立しないため、URLを直接叩かれても画面を出さない。
+  if ((await getTableKind(db, table)) === "view") {
     notFound();
   }
 

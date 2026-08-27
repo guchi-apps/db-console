@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
+import type { Pool } from "mysql2/promise";
 import {
+  assertBaseTableExists,
+  assertTableExists,
+  IdentifierNotFoundError,
   InvalidIdentifierError,
   qualifyTable,
   quoteColumn,
   quoteIdentifier,
+  ViewNotModifiableError,
 } from "@/lib/identifier";
 
 describe("quoteIdentifier / qualifyTable / quoteColumn", () => {
@@ -30,5 +35,61 @@ describe("quoteIdentifier / qualifyTable / quoteColumn", () => {
   ])("不正な識別子 %s を拒否する", (value) => {
     expect(() => qualifyTable(value, "vehicles")).toThrow(InvalidIdentifierError);
     expect(() => qualifyTable("app_car", value)).toThrow(InvalidIdentifierError);
+  });
+});
+
+/**
+ * assertTableExists / assertBaseTableExists は information_schema への SELECT のみで
+ * 判定するため、Pool を最小限のスタブに差し替えて検証する（実DBは不要）。
+ */
+function stubPool(rows: Record<string, unknown>[]) {
+  const queries: { sql: string; params: unknown[] }[] = [];
+  const pool = {
+    query: async (sql: string, params: unknown[]) => {
+      queries.push({ sql, params });
+      return [rows];
+    },
+  } as unknown as Pool;
+  return { pool, queries };
+}
+
+describe("assertTableExists / assertBaseTableExists", () => {
+  it("テーブルなら両方とも通る", async () => {
+    const { pool } = stubPool([{ table_type: "BASE TABLE" }]);
+    await expect(assertTableExists(pool, "app_car", "vehicles")).resolves.toBeUndefined();
+    await expect(assertBaseTableExists(pool, "app_car", "vehicles")).resolves.toBeUndefined();
+  });
+
+  it("ビューは assertTableExists なら通り、assertBaseTableExists は拒否する", async () => {
+    const { pool } = stubPool([{ table_type: "VIEW" }]);
+    await expect(assertTableExists(pool, "app_car", "vehicle_summary")).resolves.toBeUndefined();
+    await expect(assertBaseTableExists(pool, "app_car", "vehicle_summary")).rejects.toThrow(
+      ViewNotModifiableError,
+    );
+  });
+
+  it("存在しない対象は両方とも IdentifierNotFoundError", async () => {
+    const { pool } = stubPool([]);
+    await expect(assertTableExists(pool, "app_car", "missing")).rejects.toThrow(
+      IdentifierNotFoundError,
+    );
+    await expect(assertBaseTableExists(pool, "app_car", "missing")).rejects.toThrow(
+      IdentifierNotFoundError,
+    );
+  });
+
+  it("不正な識別子はSQLを実行せずに拒否する", async () => {
+    const { pool, queries } = stubPool([{ table_type: "BASE TABLE" }]);
+    await expect(
+      assertBaseTableExists(pool, "app_car", "vehicles; DROP TABLE users"),
+    ).rejects.toThrow(InvalidIdentifierError);
+    expect(queries).toHaveLength(0);
+  });
+
+  it("識別子は必ずプレースホルダーで渡す（SQL本文へ埋め込まない）", async () => {
+    const { pool, queries } = stubPool([{ table_type: "BASE TABLE" }]);
+    await assertBaseTableExists(pool, "app_car", "vehicles");
+    expect(queries[0].params).toEqual(["app_car", "vehicles"]);
+    expect(queries[0].sql).not.toContain("app_car");
   });
 });
