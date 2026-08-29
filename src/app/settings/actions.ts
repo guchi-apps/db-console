@@ -7,10 +7,8 @@ import { requireUserId } from "@/lib/session";
 import {
   createDatabaseEntry,
   deleteDatabaseEntry,
-  updateDatabaseEntry,
   databaseNameSchema,
   assertManagedName,
-  type DatabaseMode,
 } from "@/lib/config";
 import { createDatabase } from "@/lib/admin-db";
 import { isReauthValid } from "@/lib/reauth";
@@ -22,13 +20,12 @@ function redirectWithError(message: string): never {
 
 /**
  * MariaDB上にDBを新規作成し、そのまま管理対象として登録する（#91）。
- * 作成できるのは app_ で始まる名前だけ。作成後は閲覧・編集用ロールへの
+ * 作成できるのは app_ で始まる名前だけ。作成後はレコード操作用・構造変更用ロールへの
  * GRANT まで済ませるため、追加のインフラ作業なしで一覧へ出る。
  */
 export async function createDatabaseAction(formData: FormData): Promise<void> {
   const userId = await requireUserId();
   const name = String(formData.get("name") ?? "").trim();
-  const mode = String(formData.get("mode") ?? "") as DatabaseMode;
 
   try {
     const parsedName = databaseNameSchema.safeParse(name);
@@ -36,8 +33,8 @@ export async function createDatabaseAction(formData: FormData): Promise<void> {
       throw new Error(parsedName.error.issues[0]?.message ?? "DB名が不正です");
     }
     assertManagedName("DB名", name);
-    const { grantedAccounts } = await createDatabase(name, mode);
-    const entry = await createDatabaseEntry({ name, mode });
+    const { grantedAccounts } = await createDatabase(name);
+    const entry = await createDatabaseEntry({ name });
     await writeAuditLog({
       userId,
       action: "DATABASE_CREATE",
@@ -65,10 +62,9 @@ export async function createDatabaseAction(formData: FormData): Promise<void> {
 export async function createManagedDatabaseAction(formData: FormData): Promise<void> {
   const userId = await requireUserId();
   const name = String(formData.get("name") ?? "");
-  const mode = String(formData.get("mode") ?? "") as DatabaseMode;
 
   try {
-    const entry = await createDatabaseEntry({ name, mode });
+    const entry = await createDatabaseEntry({ name });
     await writeAuditLog({
       userId,
       action: "MANAGED_DB_CREATE",
@@ -81,37 +77,6 @@ export async function createManagedDatabaseAction(formData: FormData): Promise<v
     await writeAuditLog({
       userId,
       action: "MANAGED_DB_CREATE",
-      databaseName: name,
-      status: "FAILURE",
-      errorMessage: message,
-    });
-    redirectWithError(message);
-  }
-
-  revalidatePath("/settings");
-  revalidatePath("/");
-  redirect("/settings");
-}
-
-export async function updateManagedDatabaseAction(formData: FormData): Promise<void> {
-  const userId = await requireUserId();
-  const name = String(formData.get("name") ?? "");
-  const mode = String(formData.get("mode") ?? "") as DatabaseMode;
-
-  try {
-    const entry = await updateDatabaseEntry(name, { mode });
-    await writeAuditLog({
-      userId,
-      action: "MANAGED_DB_UPDATE",
-      databaseName: entry.name,
-      afterData: entry,
-      status: "SUCCESS",
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "更新に失敗しました";
-    await writeAuditLog({
-      userId,
-      action: "MANAGED_DB_UPDATE",
       databaseName: name,
       status: "FAILURE",
       errorMessage: message,

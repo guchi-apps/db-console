@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { getDatabaseEntry, modeAtLeast } from "@/lib/config";
+import { getDatabaseEntry } from "@/lib/config";
 import {
   getPrimaryKeyColumns,
   getTableForeignKeys,
@@ -98,7 +98,7 @@ export default async function TableRowsPage({
 
   // ビューは主キーを持たないため書き込み経路が成立しない。導線自体を出さない。
   const isView = kind === "view";
-  const canWrite = modeAtLeast(entry.mode, "data-write") && !isView;
+  const canWrite = !isView;
   const canEditRows = canWrite && pkColumns.length > 0;
   const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
 

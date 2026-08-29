@@ -1,7 +1,9 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 
+import { isSchemaChangeSql } from "@/lib/sql-guard";
+import { SchemaChangeConfirmButton } from "@/components/schema-change-confirm-button";
 import { executeSqlAction, type SqlActionState } from "./actions";
 
 function formatCellValue(value: unknown): string {
@@ -15,9 +17,12 @@ function formatCellValue(value: unknown): string {
   return String(value);
 }
 
-export function SqlForm({ db }: { db: string }) {
+export function SqlForm({ db, reauthVerified }: { db: string; reauthVerified: boolean }) {
   const initialState: SqlActionState = { sql: "" };
   const [state, formAction, isPending] = useActionState(executeSqlAction, initialState);
+  // 入力中のSQLが構造変更かどうかで送信ボタンを切り替えるため、textarea の内容を追う。
+  const [draft, setDraft] = useState("");
+  const isSchemaChange = isSchemaChangeSql(draft);
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
@@ -26,19 +31,41 @@ export function SqlForm({ db }: { db: string }) {
         <textarea
           name="sql"
           defaultValue={state.sql}
+          onChange={(event) => setDraft(event.target.value)}
           required
           rows={6}
           placeholder="SELECT * FROM ... / SHOW CREATE TABLE ... / EXPLAIN SELECT ... のようなSQLを1文だけ入力してください"
           className="w-full rounded-md border px-3 py-2 font-mono text-sm"
         />
-        <div className="flex justify-end">
-          <button
-            type="submit"
-            disabled={isPending}
-            className="min-h-11 rounded-md border px-4 py-2 text-sm hover:bg-accent disabled:opacity-50"
-          >
-            {isPending ? "実行中..." : "実行"}
-          </button>
+        <div className="flex items-center justify-end gap-3">
+          {isSchemaChange && (
+            <p className="text-muted-foreground text-xs">
+              テーブル構造を変更するSQLです。実行前に確認と本人確認が必要です。
+            </p>
+          )}
+          {isSchemaChange ? (
+            <SchemaChangeConfirmButton
+              title="SQL実行の確認"
+              description={`${db} に対してテーブル構造を変更するSQLを実行します。`}
+              reauthVerified={reauthVerified}
+              fields={[
+                { label: "操作", value: "SQLで構造を変更" },
+                { label: "データベース", value: db },
+                { label: "SQL", field: "sql" },
+              ]}
+              className="min-h-11 rounded-md border px-4 py-2 text-sm hover:bg-accent disabled:opacity-50"
+            >
+              実行
+            </SchemaChangeConfirmButton>
+          ) : (
+            <button
+              type="submit"
+              disabled={isPending}
+              className="min-h-11 rounded-md border px-4 py-2 text-sm hover:bg-accent disabled:opacity-50"
+            >
+              {isPending ? "実行中..." : "実行"}
+            </button>
+          )}
         </div>
       </form>
 

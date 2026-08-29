@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { requireUserId } from "@/lib/session";
 import { createTable, type CreateTableColumnInput } from "@/lib/introspection";
 import { buildSqlType } from "@/lib/column-types";
+import { assertSchemaChangeReauth } from "@/lib/reauth";
 import { writeAuditLog } from "@/lib/audit";
 
 const MAX_COLUMN_ROWS = 8;
@@ -16,6 +17,9 @@ export async function createTableAction(formData: FormData): Promise<void> {
   const tableName = String(formData.get("tableName") ?? "").trim();
   const listPath = `/databases/${db}/tables`;
   const newPath = `${listPath}/new`;
+
+  // テーブルの作成は構造変更なので、実行前に本人確認を求める（#105）。
+  await assertSchemaChangeReauth(newPath);
 
   try {
     const columns: CreateTableColumnInput[] = [];

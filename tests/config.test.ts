@@ -4,7 +4,6 @@ import {
   databaseEntryInputSchema,
   databaseNameSchema,
   isManagedName,
-  modeAtLeast,
 } from "@/lib/config";
 
 describe("databaseNameSchema", () => {
@@ -29,34 +28,22 @@ describe("databaseNameSchema", () => {
 
 describe("databaseEntryInputSchema", () => {
   it("正しい入力をパースできる", () => {
-    const parsed = databaseEntryInputSchema.parse({ name: "app_car", mode: "data-write" });
-    expect(parsed).toEqual({ name: "app_car", mode: "data-write" });
+    expect(databaseEntryInputSchema.parse({ name: "app_car" })).toEqual({ name: "app_car" });
   });
 
-  it("不正なmodeを拒否する", () => {
-    expect(() => databaseEntryInputSchema.parse({ name: "app_car", mode: "admin" })).toThrow();
+  it("不正なDB名を拒否する", () => {
+    expect(() => databaseEntryInputSchema.parse({ name: "app-car" })).toThrow();
   });
 
-  // 表示名（label）は #97 で廃止した。余分なキーを渡しても結果に混ざらないことを確かめる。
-  it("labelを渡してもパース結果に含まれない", () => {
+  // 表示名（label）は #97 で、操作モード（mode）は #105 で廃止した。
+  // 余分なキーを渡しても結果に混ざらないことを確かめる。
+  it("廃止したlabel・modeを渡してもパース結果に含まれない", () => {
     const parsed = databaseEntryInputSchema.parse({
       name: "app_car",
       label: "車両管理",
       mode: "read-only",
     });
-    expect(parsed).toEqual({ name: "app_car", mode: "read-only" });
-  });
-});
-
-describe("modeAtLeast", () => {
-  it("read-onlyはdata-writeを満たさない", () => {
-    expect(modeAtLeast("read-only", "data-write")).toBe(false);
-  });
-
-  it("schema-writeは全モードを満たす", () => {
-    expect(modeAtLeast("schema-write", "read-only")).toBe(true);
-    expect(modeAtLeast("schema-write", "data-write")).toBe(true);
-    expect(modeAtLeast("schema-write", "schema-write")).toBe(true);
+    expect(parsed).toEqual({ name: "app_car" });
   });
 });
 

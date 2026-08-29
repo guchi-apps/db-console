@@ -5,11 +5,11 @@ import {
   InvalidIdentifierError,
   ViewNotModifiableError,
 } from "@/lib/identifier";
-import { DatabaseNotAllowedError, ModeNotAllowedError } from "@/lib/target-db";
+import { DatabaseNotAllowedError } from "@/lib/target-db";
 
 /** ルートハンドラ共通のエラーハンドリング。既知のドメインエラーは適切なHTTPステータスへ変換する。 */
 export function toErrorResponse(error: unknown): NextResponse {
-  if (error instanceof DatabaseNotAllowedError || error instanceof ModeNotAllowedError) {
+  if (error instanceof DatabaseNotAllowedError) {
     return NextResponse.json({ error: error.message }, { status: 403 });
   }
   if (error instanceof IdentifierNotFoundError) {

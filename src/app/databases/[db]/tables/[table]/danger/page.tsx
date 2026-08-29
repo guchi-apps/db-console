@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { getDatabaseEntry, modeAtLeast } from "@/lib/config";
+import { getDatabaseEntry } from "@/lib/config";
 import { getTableKind, getTableRows } from "@/lib/introspection";
 import { requireSessionForPage } from "@/lib/session";
+import { isReauthValid } from "@/lib/reauth";
+import { SchemaChangeConfirmButton } from "@/components/schema-change-confirm-button";
+import { SchemaChangeNotice } from "@/components/schema-change-notice";
 import { truncateTableAction, dropTableAction } from "../schema-actions";
 
 export default async function TableDangerPage({
@@ -18,7 +21,7 @@ export default async function TableDangerPage({
   const { error } = await searchParams;
 
   const entry = await getDatabaseEntry(db);
-  if (!entry || !modeAtLeast(entry.mode, "schema-write")) {
+  if (!entry) {
     notFound();
   }
 
@@ -28,6 +31,8 @@ export default async function TableDangerPage({
   }
 
   const { total } = await getTableRows(db, table, { pageSize: 1 });
+  const dangerPath = `/databases/${db}/tables/${table}/danger`;
+  const reauthVerified = await isReauthValid();
 
   return (
     <main className="mx-auto flex w-full min-w-0 max-w-2xl flex-1 flex-col gap-6 p-6 md:p-8">
@@ -48,6 +53,8 @@ export default async function TableDangerPage({
         </p>
       )}
 
+      <SchemaChangeNotice verified={reauthVerified} returnTo={dangerPath} />
+
       <section className="flex flex-col gap-2 rounded-lg border border-amber-300 p-4">
         <h2 className="font-medium">空データ化（TRUNCATE）</h2>
         <p className="text-muted-foreground text-sm">
@@ -66,12 +73,21 @@ export default async function TableDangerPage({
             />
           </label>
           <div className="flex justify-end">
-            <button
-              type="submit"
+            <SchemaChangeConfirmButton
+              title="空データ化の確認"
+              description={`${db} の ${table} テーブルのレコードをすべて削除します。`}
+              reauthVerified={reauthVerified}
+              tone="danger"
+              confirmLabel={reauthVerified ? "空データ化を実行" : "本人確認して実行"}
+              fields={[
+                { label: "操作", value: "空データ化（TRUNCATE）" },
+                { label: "テーブル", value: table },
+                { label: "削除される件数", value: `${total} 件` },
+              ]}
               className="min-h-11 rounded-md border border-amber-400 px-4 py-2 text-sm text-amber-700 hover:bg-amber-50"
             >
               空データ化を実行
-            </button>
+            </SchemaChangeConfirmButton>
           </div>
         </form>
       </section>
@@ -94,12 +110,21 @@ export default async function TableDangerPage({
             />
           </label>
           <div className="flex justify-end">
-            <button
-              type="submit"
+            <SchemaChangeConfirmButton
+              title="テーブル削除の確認"
+              description={`${db} の ${table} テーブルとそのデータを完全に削除します。`}
+              reauthVerified={reauthVerified}
+              tone="danger"
+              confirmLabel={reauthVerified ? "テーブルを削除" : "本人確認して削除"}
+              fields={[
+                { label: "操作", value: "テーブル削除（DROP TABLE）" },
+                { label: "テーブル", value: table },
+                { label: "削除される件数", value: `${total} 件` },
+              ]}
               className="min-h-11 rounded-md border border-red-400 px-4 py-2 text-sm text-red-700 hover:bg-red-50"
             >
               テーブルを削除
-            </button>
+            </SchemaChangeConfirmButton>
           </div>
         </form>
       </section>

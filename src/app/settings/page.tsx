@@ -12,14 +12,7 @@ import {
   createDatabaseAction,
   createManagedDatabaseAction,
   deleteManagedDatabaseAction,
-  updateManagedDatabaseAction,
 } from "./actions";
-
-const MODE_OPTIONS = [
-  { value: "read-only", label: "閲覧のみ" },
-  { value: "data-write", label: "データ編集可" },
-  { value: "schema-write", label: "構造変更可" },
-] as const;
 
 export default async function SettingsPage({
   searchParams,
@@ -62,6 +55,10 @@ export default async function SettingsPage({
           db_console_data / db_console_schema へGRANT済みのものだけを「既存DBを登録」から追加できます。
           削除したDBは自動登録の対象から外れ、戻したいときは「既存DBを登録」から登録し直せます。
         </p>
+        <p className="text-muted-foreground text-sm">
+          管理対象のDBは、レコードの編集も構造の変更も行えます。テーブル・カラム・インデックスを
+          変更するときだけ、実行前に内容の確認とGoogleアカウントでの本人確認を求めます。
+        </p>
       </div>
 
       {error && (
@@ -77,43 +74,15 @@ export default async function SettingsPage({
 
           <ul className="flex flex-col gap-3">
             {databases.map((entry) => (
-              <li key={entry.name} className="flex flex-col gap-3 rounded-lg border p-4">
-                <span className="font-medium">{entry.name}</span>
-                <form
-                  id={`update-db-${entry.name}`}
-                  action={updateManagedDatabaseAction}
-                  className="hidden"
-                >
-                  <input type="hidden" name="name" value={entry.name} />
-                </form>
-                <div className="flex justify-between gap-3">
-                  <select
-                    name="mode"
-                    form={`update-db-${entry.name}`}
-                    defaultValue={entry.mode}
-                    className="rounded-md border px-3 py-2 text-sm"
-                    aria-label="操作モード"
-                  >
-                    {MODE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="flex gap-3">
-                    <button
-                      type="submit"
-                      form={`update-db-${entry.name}`}
-                      className="min-h-11 rounded-md border px-3 text-sm hover:bg-accent"
-                    >
-                      保存
-                    </button>
-                    <DeleteManagedDatabaseButton
-                      action={deleteManagedDatabaseAction}
-                      name={entry.name}
-                    />
-                  </div>
-                </div>
+              <li
+                key={entry.name}
+                className="flex items-center justify-between gap-3 rounded-lg border p-4"
+              >
+                <span className="min-w-0 truncate font-medium">{entry.name}</span>
+                <DeleteManagedDatabaseButton
+                  action={deleteManagedDatabaseAction}
+                  name={entry.name}
+                />
               </li>
             ))}
             {databases.length === 0 && (
@@ -137,21 +106,9 @@ export default async function SettingsPage({
                   aria-label="DB名"
                   className="rounded-md border px-3 py-2 font-mono text-sm"
                 />
-                <select
-                  name="mode"
-                  defaultValue="data-write"
-                  aria-label="操作モード"
-                  className="rounded-md border px-3 py-2 text-sm"
-                >
-                  {MODE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
                 <p className="text-muted-foreground text-xs">
-                  utf8mb4 / utf8mb4_unicode_ci で作成し、選んだ操作モードに応じて
-                  db_console_data（構造変更可なら db_console_schema にも）へ権限を付与します。
+                  utf8mb4 / utf8mb4_unicode_ci で作成し、db_console_data と db_console_schema の
+                  両方へ権限を付与します。
                 </p>
                 <div className="flex justify-end">
                   <button
@@ -192,17 +149,6 @@ export default async function SettingsPage({
                   {registrableNames.map((name) => (
                     <option key={name} value={name}>
                       {name}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  name="mode"
-                  defaultValue="read-only"
-                  className="rounded-md border px-3 py-2 text-sm"
-                >
-                  {MODE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
                     </option>
                   ))}
                 </select>

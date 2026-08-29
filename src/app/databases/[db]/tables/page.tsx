@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { getDatabaseEntry, modeAtLeast } from "@/lib/config";
+import { getDatabaseEntry } from "@/lib/config";
 import { listTables } from "@/lib/introspection";
 import { requireSessionForPage } from "@/lib/session";
 
@@ -18,7 +18,6 @@ export default async function TablesPage({
   }
 
   const tables = await listTables(db);
-  const canCreateTable = modeAtLeast(entry.mode, "schema-write");
 
   return (
     <main className="mx-auto flex w-full min-w-0 max-w-2xl flex-1 flex-col gap-4 p-6 md:max-w-5xl md:gap-6 md:p-8">
@@ -36,14 +35,12 @@ export default async function TablesPage({
             >
               SQL実行
             </Link>
-            {canCreateTable && (
-              <Link
-                href={`/databases/${db}/tables/new`}
-                className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
-              >
-                + テーブル作成
-              </Link>
-            )}
+            <Link
+              href={`/databases/${db}/tables/new`}
+              className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
+            >
+              + テーブル作成
+            </Link>
           </div>
         </div>
       </div>

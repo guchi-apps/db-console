@@ -1,13 +1,9 @@
 import type { Pool, RowDataPacket } from "mysql2/promise";
 
-import {
-  FORBIDDEN_DATABASE_NAMES,
-  MANAGED_NAME_PREFIX,
-  assertManagedName,
-  type DatabaseMode,
-} from "@/lib/config";
+import { FORBIDDEN_DATABASE_NAMES, MANAGED_NAME_PREFIX, assertManagedName } from "@/lib/config";
 import {
   assertSafeDatabaseName,
+  fromDatabaseGrantPattern,
   quoteIdentifier,
   toDatabaseGrantPattern,
 } from "@/lib/identifier";
@@ -51,16 +47,13 @@ export function getAdminPool(): Pool {
 }
 
 /**
- * 新しく作ったDBに対して、閲覧・編集用ロール（db_console_data）へ付与する権限。
+ * 管理対象のDBに対して、レコード操作用ロール（db_console_data）へ付与する権限。
  * SHOW VIEW はビュー定義の表示（information_schema.views.view_definition）に必要（#86）。
+ * 操作モードごとの出し分けは #105 で廃止し、管理対象のDBには常に同じ権限を付ける。
  */
-const DATA_ROLE_PRIVILEGES: Record<DatabaseMode, string[]> = {
-  "read-only": ["SELECT", "SHOW VIEW"],
-  "data-write": ["SELECT", "INSERT", "UPDATE", "DELETE", "SHOW VIEW"],
-  "schema-write": ["SELECT", "INSERT", "UPDATE", "DELETE", "SHOW VIEW"],
-};
+const DATA_ROLE_PRIVILEGES = ["SELECT", "INSERT", "UPDATE", "DELETE", "SHOW VIEW"];
 
-/** 構造変更用ロール（db_console_schema）へ付与する権限。schema-write のDBにだけ付ける。 */
+/** 構造変更用ロール（db_console_schema）へ付与する権限。 */
 const SCHEMA_ROLE_PRIVILEGES = [
   "SELECT",
   "INSERT",
@@ -121,15 +114,15 @@ async function grantToRole(
 }
 
 /**
- * 指定したDBを、操作モードに応じて閲覧・編集用（と必要なら構造変更用）ロールへ
- * GRANT する。DBの新規作成（createDatabase）と、app_ で始まる既存DBの自動登録
+ * 指定したDBを、レコード操作用ロールと構造変更用ロールの両方へ GRANT する。
+ * DBの新規作成（createDatabase）と、app_ で始まる既存DBの自動登録
  * （managed-db-sync.ts・#97）の両方から呼ぶ。
  * GRANT は冪等なので、既に権限を持つDBへ再実行しても問題ない。
+ *
+ * 操作モードごとに付与先を変えていたのは #105 まで。管理対象のDBはすべて構造変更まで
+ * 行えるようにしたため、常に両ロールへ付ける。
  */
-export async function grantDatabaseToRoles(
-  name: string,
-  mode: DatabaseMode,
-): Promise<string[]> {
+export async function grantDatabaseToRoles(name: string): Promise<string[]> {
   assertSafeDatabaseName(name);
   assertManagedName("DB名", name);
 
@@ -137,17 +130,32 @@ export async function grantDatabaseToRoles(
   const grantedAccounts = await grantToRole(
     pool,
     process.env.DB_CONSOLE_DATA_USER!,
-    DATA_ROLE_PRIVILEGES[mode],
+    DATA_ROLE_PRIVILEGES,
     name,
   );
-
-  if (mode === "schema-write") {
-    grantedAccounts.push(
-      ...(await grantToRole(pool, process.env.DB_CONSOLE_SCHEMA_USER!, SCHEMA_ROLE_PRIVILEGES, name)),
-    );
-  }
+  grantedAccounts.push(
+    ...(await grantToRole(pool, process.env.DB_CONSOLE_SCHEMA_USER!, SCHEMA_ROLE_PRIVILEGES, name)),
+  );
 
   return grantedAccounts;
+}
+
+/**
+ * 構造変更用ロール（db_console_schema）が既にGRANTされているDB名を列挙する（#105）。
+ * #105 より前に自動登録されたDBは「データ編集可」で登録されており、構造変更用ロールへは
+ * GRANTされていない。毎回すべてのDBへGRANTを流し直すのは重いので、ここで差分だけを見る。
+ * mysql.db の Db カラムはエスケープ済みのGRANTパターンで入っているためDB名へ戻す。
+ */
+export async function listSchemaRoleGrantedDatabaseNames(): Promise<string[]> {
+  const pool = getAdminPool();
+  const [rows] = await pool.query<RowDataPacket[]>(
+    "SELECT DISTINCT Db AS db FROM mysql.db WHERE User = ?",
+    [process.env.DB_CONSOLE_SCHEMA_USER!],
+  );
+  return rows.map((row) => {
+    const pattern = String(row.db);
+    return fromDatabaseGrantPattern(pattern) ?? pattern;
+  });
 }
 
 /**
@@ -176,13 +184,10 @@ export interface CreateDatabaseResult {
 }
 
 /**
- * MariaDB上にDBを新規作成し、閲覧・編集用（と必要なら構造変更用）ロールへ権限を付与する。
+ * MariaDB上にDBを新規作成し、レコード操作用・構造変更用の両ロールへ権限を付与する。
  * 作成できるのは app_ で始まる名前だけで、システムDBの名前は config.ts 側でも弾いている。
  */
-export async function createDatabase(
-  name: string,
-  mode: DatabaseMode,
-): Promise<CreateDatabaseResult> {
+export async function createDatabase(name: string): Promise<CreateDatabaseResult> {
   assertSafeDatabaseName(name);
   assertManagedName("DB名", name);
   if (FORBIDDEN_DATABASE_NAMES.has(name)) {
@@ -203,5 +208,5 @@ export async function createDatabase(
     `CREATE DATABASE ${quoteIdentifier(name)} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
   );
 
-  return { grantedAccounts: await grantDatabaseToRoles(name, mode) };
+  return { grantedAccounts: await grantDatabaseToRoles(name) };
 }

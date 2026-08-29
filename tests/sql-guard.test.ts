@@ -6,6 +6,7 @@ import {
   assertSupportedQueryType,
   assertWhereClauseForMutation,
   classifyStatement,
+  isSchemaChangeSql,
   validateSqlForExecution,
 } from "@/lib/sql-guard";
 
@@ -235,5 +236,29 @@ describe("validateSqlForExecution（統合）", () => {
     expect(() =>
       validateSqlForExecution("EXPLAIN ANALYZE SELECT * FROM users"),
     ).toThrow();
+  });
+});
+
+describe("isSchemaChangeSql", () => {
+  // #105: 構造（DDL）を変えるSQLだけ、実行前に確認と本人確認を求める。
+  it.each([
+    "CREATE TABLE t (id INT)",
+    "  create table `t` (id int)",
+    "ALTER TABLE t ADD COLUMN name VARCHAR(10)",
+  ])("構造を変えるSQLを検知する: %s", (sql) => {
+    expect(isSchemaChangeSql(sql)).toBe(true);
+  });
+
+  it.each([
+    "SELECT * FROM t",
+    "INSERT INTO t (id) VALUES (1)",
+    "UPDATE t SET id = 2 WHERE id = 1",
+    "DELETE FROM t WHERE id = 1",
+    "SHOW CREATE TABLE t",
+    "DESCRIBE t",
+    "EXPLAIN SELECT * FROM t",
+    "",
+  ])("構造を変えないSQLは対象外にする: %s", (sql) => {
+    expect(isSchemaChangeSql(sql)).toBe(false);
   });
 });
