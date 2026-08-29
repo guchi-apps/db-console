@@ -1,5 +1,6 @@
 "use server";
 
+import { writeAuditLog } from "@/lib/audit";
 import { requireUserId } from "@/lib/session";
 import { executeSql, type SqlExecutionResult } from "@/lib/sql-execute";
 import { db as prismaDb } from "@/lib/db";
@@ -38,6 +39,14 @@ export async function executeSqlAction(
         status: "SUCCESS",
       },
     });
+    await writeAuditLog({
+      userId,
+      action: "SQL_EXECUTE",
+      databaseName,
+      sqlText: sql,
+      affectedRows: result.affectedRows ?? undefined,
+      status: "SUCCESS",
+    });
     return { sql, result };
   } catch (error) {
     const message = error instanceof Error ? error.message : "SQL実行に失敗しました";
@@ -51,6 +60,14 @@ export async function executeSqlAction(
         status: "FAILURE",
         errorMessage: message,
       },
+    });
+    await writeAuditLog({
+      userId,
+      action: "SQL_EXECUTE",
+      databaseName,
+      sqlText: sql,
+      status: "FAILURE",
+      errorMessage: message,
     });
     return { sql, error: message };
   }

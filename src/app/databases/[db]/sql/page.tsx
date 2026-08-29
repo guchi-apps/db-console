@@ -32,8 +32,11 @@ export default async function SqlPage({ params }: { params: Promise<{ db: string
         </Link>
         <h1 className="text-xl font-semibold md:text-2xl">SQL実行</h1>
         <p className="text-muted-foreground text-sm">
-          1文のみ実行できます。GRANT/REVOKE/SET GLOBAL等の禁止SQL、DROP/TRUNCATEを含むSQL、
-          条件（WHERE句）のないUPDATE/DELETEは実行できません。
+          1文のみ実行できます。SELECT/INSERT/UPDATE/DELETE/CREATE TABLE/ALTER TABLEに加えて、
+          SHOW CREATE TABLE・SHOW INDEX・SHOW TABLE STATUS・DESCRIBE・EXPLAIN
+          などの読み取り専用SQLを実行できます。GRANT/REVOKE/SET GLOBAL等の禁止SQL、
+          DROP/TRUNCATEを含むSQL、条件（WHERE句）のないUPDATE/DELETE、
+          SHOW GRANTS・SHOW PROCESSLIST・SHOW VARIABLESなどサーバー全体の情報を返すSQLは実行できません。
         </p>
       </div>
 

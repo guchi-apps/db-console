@@ -39,6 +39,29 @@ This version has breaking changes — APIs, conventions, and file structure may 
 `SHOW VIEW` はローカルの `scripts/setup-db.sh` では両ロールへ付与済み。**本番VPSのロールには
 付いていない**ため、本番でビュー定義を表示するにはGRANTの追加が要る（#86 から切り出した手作業Issue）。
 
+### SQL実行画面で通すSQL（#85）
+
+種別は `classifyStatement()`（`src/lib/sql-guard.ts`）が先頭キーワードから決め、`OTHER` は
+`assertSupportedQueryType()` が拒否する。DML/DDLに加えて `SHOW` / `DESCRIBE` / `EXPLAIN` の
+読み取り専用SQLを通す。この3種別は `read-only` モードのDBでも実行でき、プールは `getDataPool()`。
+
+**`SHOW` は許可リストで判定する（拒否リストにしない）。** 2語目が
+`CREATE`・`COLUMNS`・`FIELDS`・`INDEX`・`INDEXES`・`KEYS`・`TABLE`(STATUS)・`TABLES`・`TRIGGERS`、
+または `FULL` + `COLUMNS`/`FIELDS`/`TABLES` のときだけ通す。`SHOW GRANTS`・`SHOW PROCESSLIST`・
+`SHOW VARIABLES`・`SHOW DATABASES` などサーバー全体の情報を返す文を通さないためで、拒否リストに
+すると将来のSHOW文が黙って通る。**`SHOW FULL PROCESSLIST` を落とすために3語目まで見ている**ので、
+`FULL` の判定を2語目だけに戻さないこと。
+
+**`EXPLAIN` / `DESCRIBE` の直後が `ANALYZE`・`FOR`・`INSERT`・`UPDATE`・`DELETE`・`REPLACE` の
+ときは通さない。** MariaDBの `ANALYZE` 系は対象の文を実際に実行するため読み取り専用ではなく、
+`EXPLAIN FOR CONNECTION` は他セッションを覗く。`EXPLAIN FORMAT=JSON SELECT ...` は通る。
+
+ユーザーが打った `SHOW CREATE VIEW` は `SHOW VIEW` 権限が無ければDB側のエラーになる（本番VPSの
+ロールには付いていない）。アプリ自身がビュー定義を読むときは従来どおり
+`information_schema.views.view_definition` を使う。
+
+SQL実行は実行履歴（`SqlHistory`）と監査ログ（`AuditLog` の `SQL_EXECUTE`）の両方へ記録する。
+
 ### DBの作成とDBユーザーの管理（#91）
 
 接続ロールは3つあり、**用途ごとにプールを分けている**。強い権限を持つ管理ロールは

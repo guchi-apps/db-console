@@ -99,6 +99,9 @@ enum SqlQueryType {
   DELETE
   CREATE_TABLE
   ALTER_TABLE
+  SHOW
+  DESCRIBE
+  EXPLAIN
   OTHER
 }
 
