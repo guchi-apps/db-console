@@ -28,7 +28,7 @@ export function SqlForm({ db }: { db: string }) {
           defaultValue={state.sql}
           required
           rows={6}
-          placeholder="SELECT * FROM ... のようなSQLを1文だけ入力してください"
+          placeholder="SELECT * FROM ... / SHOW CREATE TABLE ... / EXPLAIN SELECT ... のようなSQLを1文だけ入力してください"
           className="w-full rounded-md border px-3 py-2 font-mono text-sm"
         />
         <div className="flex justify-end">

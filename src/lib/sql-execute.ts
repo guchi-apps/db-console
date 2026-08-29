@@ -13,6 +13,10 @@ const REQUIRED_MODE: Record<SqlQueryType, DatabaseMode> = {
   DELETE: "data-write",
   CREATE_TABLE: "schema-write",
   ALTER_TABLE: "schema-write",
+  // SHOW / DESCRIBE / EXPLAIN は読み取り専用なので read-only モードのDBでも実行できる（#85）。
+  SHOW: "read-only",
+  DESCRIBE: "read-only",
+  EXPLAIN: "read-only",
   OTHER: "schema-write", // validateSqlForExecution が先に弾くため到達しない想定
 };
 

@@ -47,14 +47,14 @@ export default async function EditRowPage({
   }
 
   return (
-    <main className="mx-auto flex w-full min-w-0 max-w-2xl flex-1 flex-col gap-4 p-6">
+    <main className="mx-auto flex w-full min-w-0 max-w-2xl flex-1 flex-col gap-4 p-6 md:p-8">
       <Link
         href={`/databases/${db}/tables/${table}`}
         className="text-muted-foreground text-sm hover:underline"
       >
         ← {table} のレコード一覧
       </Link>
-      <h1 className="text-xl font-semibold">{table} のレコードを編集</h1>
+      <h1 className="text-xl font-semibold md:text-2xl">{table} のレコードを編集</h1>
 
       {error && (
         <p className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">

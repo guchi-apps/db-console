@@ -2,6 +2,7 @@ import type { Pool, RowDataPacket } from "mysql2/promise";
 
 import {
   FORBIDDEN_DATABASE_NAMES,
+  MANAGED_NAME_PREFIX,
   assertManagedName,
   type DatabaseMode,
 } from "@/lib/config";
@@ -119,6 +120,56 @@ async function grantToRole(
   return hosts.map((host) => `${user}@${host}`);
 }
 
+/**
+ * 指定したDBを、操作モードに応じて閲覧・編集用（と必要なら構造変更用）ロールへ
+ * GRANT する。DBの新規作成（createDatabase）と、app_ で始まる既存DBの自動登録
+ * （managed-db-sync.ts・#97）の両方から呼ぶ。
+ * GRANT は冪等なので、既に権限を持つDBへ再実行しても問題ない。
+ */
+export async function grantDatabaseToRoles(
+  name: string,
+  mode: DatabaseMode,
+): Promise<string[]> {
+  assertSafeDatabaseName(name);
+  assertManagedName("DB名", name);
+
+  const pool = getAdminPool();
+  const grantedAccounts = await grantToRole(
+    pool,
+    process.env.DB_CONSOLE_DATA_USER!,
+    DATA_ROLE_PRIVILEGES[mode],
+    name,
+  );
+
+  if (mode === "schema-write") {
+    grantedAccounts.push(
+      ...(await grantToRole(pool, process.env.DB_CONSOLE_SCHEMA_USER!, SCHEMA_ROLE_PRIVILEGES, name)),
+    );
+  }
+
+  return grantedAccounts;
+}
+
+/**
+ * MariaDB上に実在する app_ で始まるDB名を列挙する（#97）。
+ * data/schema ロールの information_schema.schemata はGRANT済みのDBしか返さないため、
+ * 「まだGRANTしていない app_ のDB」を見つけるには `app\_%` へのGRANT OPTIONを持つ
+ * 管理ロールで引く必要がある。`_` はLIKEのワイルドカードなのでエスケープする。
+ */
+export async function listExistingManagedDatabaseNames(): Promise<string[]> {
+  const pool = getAdminPool();
+  const likePattern = `${MANAGED_NAME_PREFIX.replace(/_/g, "\\_")}%`;
+
+  const [rows] = await pool.query<RowDataPacket[]>(
+    "SELECT schema_name AS schema_name FROM information_schema.schemata WHERE schema_name LIKE ? ORDER BY schema_name",
+    [likePattern],
+  );
+
+  return rows
+    .map((row) => String(row.schema_name))
+    .filter((name) => !FORBIDDEN_DATABASE_NAMES.has(name));
+}
+
 export interface CreateDatabaseResult {
   /** 実際に権限を付与したアカウント（例: db_console_data@localhost）。 */
   grantedAccounts: string[];
@@ -152,23 +203,5 @@ export async function createDatabase(
     `CREATE DATABASE ${quoteIdentifier(name)} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
   );
 
-  const grantedAccounts = await grantToRole(
-    pool,
-    process.env.DB_CONSOLE_DATA_USER!,
-    DATA_ROLE_PRIVILEGES[mode],
-    name,
-  );
-
-  if (mode === "schema-write") {
-    grantedAccounts.push(
-      ...(await grantToRole(
-        pool,
-        process.env.DB_CONSOLE_SCHEMA_USER!,
-        SCHEMA_ROLE_PRIVILEGES,
-        name,
-      )),
-    );
-  }
-
-  return { grantedAccounts };
+  return { grantedAccounts: await grantDatabaseToRoles(name, mode) };
 }

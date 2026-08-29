@@ -39,6 +39,35 @@ This version has breaking changes — APIs, conventions, and file structure may 
 `SHOW VIEW` はローカルの `scripts/setup-db.sh` では両ロールへ付与済み。**本番VPSのロールには
 付いていない**ため、本番でビュー定義を表示するにはGRANTの追加が要る（#86 から切り出した手作業Issue）。
 
+### SQL実行画面で通すSQL（#85）
+
+種別は `classifyStatement()`（`src/lib/sql-guard.ts`）が先頭キーワードから決め、`OTHER` は
+`assertSupportedQueryType()` が拒否する。DML/DDLに加えて `SHOW` / `DESCRIBE` / `EXPLAIN` の
+読み取り専用SQLを通す。この3種別は `read-only` モードのDBでも実行でき、プールは `getDataPool()`。
+
+**`SHOW` は許可リストで判定する（拒否リストにしない）。** 2語目が
+`CREATE`・`COLUMNS`・`FIELDS`・`INDEX`・`INDEXES`・`KEYS`・`TABLE`(STATUS)・`TABLES`・`TRIGGERS`、
+または `FULL` + `COLUMNS`/`FIELDS`/`TABLES` のときだけ通す。`SHOW GRANTS`・`SHOW PROCESSLIST`・
+`SHOW VARIABLES`・`SHOW DATABASES` などサーバー全体の情報を返す文を通さないためで、拒否リストに
+すると将来のSHOW文が黙って通る。**`SHOW FULL PROCESSLIST` を落とすために3語目まで見ている**ので、
+`FULL` の判定を2語目だけに戻さないこと。
+
+**`EXPLAIN` / `DESCRIBE` の直後が `ANALYZE`・`FOR`・`INSERT`・`UPDATE`・`DELETE`・`REPLACE` の
+ときは通さない。** MariaDBの `ANALYZE` 系は対象の文を実際に実行するため読み取り専用ではなく、
+`EXPLAIN FOR CONNECTION` は他セッションを覗く。`EXPLAIN FORMAT=JSON SELECT ...` は通る。
+
+**ビューを対象にした `SHOW CREATE VIEW` / `SHOW CREATE TABLE` は、本番では必ず失敗する。**
+本番VPSのロールに `SHOW VIEW` が無く `SHOW VIEW command denied` になる（ローカルは
+`scripts/setup-db.sh` が付与済みのため再現しない。#86 から切り出した手作業Issue待ち）。
+手打ちで失敗するだけなので許可対象からは外していないが、アプリ自身がビュー定義を読むときは
+従来どおり `information_schema.views.view_definition` を使う。
+
+**`SHOW GRANTS` を落としているのは許可リストだけ。** `assertNoForbiddenSql()` の `/\bGRANT\b/i` は
+`GRANTS` に一致しない（`\b` が `S` の手前で成立しない）ため、許可リストを拒否リストへ変えると
+`SHOW GRANTS` が通ってしまう。
+
+SQL実行は実行履歴（`SqlHistory`）と監査ログ（`AuditLog` の `SQL_EXECUTE`）の両方へ記録する。
+
 ### DBの作成とDBユーザーの管理（#91）
 
 接続ロールは3つあり、**用途ごとにプールを分けている**。強い権限を持つ管理ロールは
@@ -68,6 +97,30 @@ MySQL/MariaDBはGRANT文のDB名を「パターン」として扱い、付与す
 保存せず、作成・再発行の直後に画面で1度だけ表示する。**本番VPSには `db_console_admin` ロールが
 無い**ため、作られるまで本番の画面には「未設定」と出る（#91 から切り出した手作業Issue）。
 
+### `app_` で始まるDBの自動登録（#97）
+
+`app_` で始まるDBは登録操作なしで管理対象になる。DB一覧・設定画面の描画時に
+`src/lib/managed-db-sync.ts` の `syncManagedAppDatabases()` が走り、未登録のものを
+**GRANT してから** `ManagedDatabase` へ登録する（既定モードは `data-write`）。
+
+**列挙は管理ロールでなければできない。** `db_console_data` / `db_console_schema` の
+`information_schema.schemata` は**GRANT済みのDBしか返さない**ため、
+`listRegistrableDatabaseNames()`（`src/lib/target-db.ts`）には「まだGRANTしていない `app_` のDB」が
+出てこない。`` `app\_%` `` への GRANT OPTION を持つ `db_console_admin` で引く必要があり、
+そのため自動登録は**管理ロールが設定されている環境でだけ動く**（未設定の本番VPSでは従来どおり
+「既存DBを登録」からの手動登録になる）。LIKE の `_` はワイルドカードなのでエスケープする。
+
+**`app_` のDBは「削除」しても行を消さない。** 消すと次の描画で自動登録が戻してしまうため、
+`deleteDatabaseEntry()`（`src/lib/config.ts`）は `ManagedDatabase.excludedAt` に日時を入れて
+「除外中」にする。除外中の行は `getDatabasesConfig()`・`getDatabaseEntry()` から外れる
+（＝許可リストに載らない）が、`listAllManagedDatabaseNames()` には出るので自動登録の対象からも外れる。
+戻すときは「既存DBを登録」から選び直すと `createDatabaseEntry()` が除外を解除する。
+**除外しても `db_console_data` へ付与済みのGRANTは残る**（REVOKEの経路はこのアプリに無い）。
+アプリからは触れなくなるが、権限まで剥がしたいときはMariaDB側の手作業になる。
+
+**画面表示用の表示名（`ManagedDatabase.label`）は #97 で廃止した**——DB名をそのまま表示する。
+表示名を復活させる変更はこの決定を覆すことになるので、Issueで相談する。
+
 ## アプリ名・アイコン
 
 利用者に見せる名前とアイコンの一次情報源は `src/lib/app-branding.tsx`（`APP_NAME` / 配色 /
@@ -78,6 +131,27 @@ MySQL/MariaDBはGRANT文のDB名を「パターン」として扱い、付与す
 **アイコンのパスは `src/proxy.ts` の `matcher` から除外する。** 未ログインでも取得できないと、
 ログイン画面のタブアイコンとホーム画面へ追加したときのアイコンが `/login` へのリダイレクトになる。
 除外リストの `icon` は前方一致なので `/icons/*` も一緒に外れるが、`/apple-icon` は別途書く必要がある。
+
+## 画面幅（スマホ / PC）
+
+**境目は Tailwind の `md`（768px）だけ。** それ未満はスマホ表示（従来どおりの1カラム＋画面下の
+タブバー）、以上はPC表示（左サイドバー＋本文）。**既存画面に手を入れるときは基底のクラスを変えず、
+`md:` を足す形にする**——基底を変えるとスマホ表示が一緒に変わる。
+
+ナビゲーションは2つあり、**同時に出さない**。`BottomNav`（`md:hidden`）と
+`SideNav`（`hidden md:flex`）は同じ役割を担う。サイドバーはルートレイアウトが
+セッションのあるときだけ描画する（未ログイン時は出さない）。
+
+**サイドバーの「開いているDBのテーブル一覧」はブラウザから取っている。** ルートレイアウトは
+`[db]` を知らず、テーブル一覧を持つのはその配下のページだけなので、サーバー側では渡せない。
+既存の `/api/databases/[db]/tables` を `SideNav` から読んでいる。サーバー取得へ変えたい場合は
+レイアウトの分割（`databases/[db]/layout.tsx` を作ってシェルを移す）が要る。
+
+**表の見出し行を固定するときは、`th` に背景と下線を持たせる。** 高さを抑えた
+`overflow-auto` のコンテナ＋`sticky top-0` の `thead` にする必要があり（高さの制約が無いと
+コンテナが縦スクロールしないため固定にならない）、さらに `border-collapse: collapse` の下では
+`tr` に付けた背景・`border-b` が固定時に消える。`[&>th]:bg-muted` と
+`[&>th]:shadow-[inset_0_-1px_0_var(--border)]` を使う（レコード一覧・SQL実行履歴が実例）。
 
 ## 検証コマンド
 
@@ -117,6 +191,18 @@ npm run build
 **`db:migrate:deploy` の npm script は無い**（共有ワークフローが `--if-present` で呼ぶため落ちないが、
 マイグレーションは実行されない）。マイグレーションが要る変更では、`npx prisma migrate deploy` を
 明示的に使う。
+
+**手書きしたマイグレーションが `schema.prisma` と一致しているかはCIでは検出できない**（CIは
+`prisma migrate deploy` で適用するだけ）。ENUMの値を1つ書き漏らしても lint・型チェック・テスト・
+ビルドはすべて通り、本番でだけ `Data truncated for column ...` で落ちる。空のDBを1つ用意して
+次の2つを流し、**No difference detected**（終了コード0）を確認する。**Prisma 7 の `migrate diff` に
+`--shadow-database-url` は無い**（`--from-migrations` も使わない。設定は `prisma.config.ts` から読む）。
+
+```bash
+export DATABASE_URL="mysql://<user>:<pass>@127.0.0.1:3306/<空のDB>"
+npx prisma migrate deploy
+npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
+```
 
 `prisma.config.ts` は DATABASE_URL が未設定のとき、接続できないプレースホルダーへ倒す。
 **これが無いと `npm ci` の postinstall（`prisma generate`）ごと落ちる。** 詳細はファイル内のコメントを参照。
