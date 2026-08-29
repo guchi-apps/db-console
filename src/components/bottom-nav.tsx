@@ -14,7 +14,8 @@ export function BottomNav() {
 
   return (
     <nav
-      className="bg-background/95 fixed inset-x-0 bottom-0 z-40 flex border-t backdrop-blur"
+      // md以上では左サイドバー（SideNav）が同じ役割を担うため出さない。
+      className="bg-background/95 fixed inset-x-0 bottom-0 z-40 flex border-t backdrop-blur md:hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
