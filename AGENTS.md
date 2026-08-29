@@ -168,6 +168,18 @@ npm run build
 マイグレーションは実行されない）。マイグレーションが要る変更では、`npx prisma migrate deploy` を
 明示的に使う。
 
+**手書きしたマイグレーションが `schema.prisma` と一致しているかはCIでは検出できない**（CIは
+`prisma migrate deploy` で適用するだけ）。ENUMの値を1つ書き漏らしても lint・型チェック・テスト・
+ビルドはすべて通り、本番でだけ `Data truncated for column ...` で落ちる。空のDBを1つ用意して
+次の2つを流し、**No difference detected**（終了コード0）を確認する。**Prisma 7 の `migrate diff` に
+`--shadow-database-url` は無い**（`--from-migrations` も使わない。設定は `prisma.config.ts` から読む）。
+
+```bash
+export DATABASE_URL="mysql://<user>:<pass>@127.0.0.1:3306/<空のDB>"
+npx prisma migrate deploy
+npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
+```
+
 `prisma.config.ts` は DATABASE_URL が未設定のとき、接続できないプレースホルダーへ倒す。
 **これが無いと `npm ci` の postinstall（`prisma generate`）ごと落ちる。** 詳細はファイル内のコメントを参照。
 
