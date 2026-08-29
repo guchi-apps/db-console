@@ -54,7 +54,9 @@ This version has breaking changes — APIs, conventions, and file structure may 
 **画面側の確認ダイアログ（`SchemaChangeConfirmButton`）は補助であって、認可ではない。**
 `type="button"` でダイアログを開き、実行を選んだときに `form.requestSubmit()` で送信する
 （ダイアログはポータルでフォームの外に出るため `type="submit"` では送れない）。
-ブラウザ側だけの仕掛けなので、**サーバーアクション側の再認証チェックを省略しないこと。**
+`type="button"` にするとブラウザ標準の必須チェックが走らなくなるので、開く前に
+`form.reportValidity()` を明示的に呼ぶ。ブラウザ側だけの仕掛けなので、**サーバーアクション側の
+再認証チェックを省略しないこと。**
 
 **再認証へリダイレクトすると入力中のフォームは失われる。** そのため構造を扱う画面の先頭に
 `SchemaChangeNotice`（`src/components/schema-change-notice.tsx`）を置き、入力を始める前に
@@ -237,6 +239,10 @@ export DATABASE_URL="mysql://<user>:<pass>@127.0.0.1:3306/<空のDB>"
 npx prisma migrate deploy
 npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
 ```
+
+**MySQL/MariaDB の ENUM は列に紐づく型なので、enum を使っている列を `DROP COLUMN` すれば
+`schema.prisma` から enum 定義を消すだけで差分なしになる**（`DROP TYPE` にあたる文は要らない。
+#105 の `DatabaseMode` で確認）。
 
 `prisma.config.ts` は DATABASE_URL が未設定のとき、接続できないプレースホルダーへ倒す。
 **これが無いと `npm ci` の postinstall（`prisma generate`）ごと落ちる。** 詳細はファイル内のコメントを参照。
