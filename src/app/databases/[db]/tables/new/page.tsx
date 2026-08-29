@@ -31,7 +31,7 @@ export default async function NewTablePage({
         href={`/databases/${db}/tables`}
         className="text-muted-foreground text-sm hover:underline"
       >
-        ← {entry.label} のテーブル一覧
+        ← {entry.name} のテーブル一覧
       </Link>
       <h1 className="text-xl font-semibold md:text-2xl">テーブルを作成</h1>
 

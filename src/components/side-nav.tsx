@@ -7,7 +7,7 @@ import { Database, Home, Settings } from "lucide-react";
 
 import { APP_ICON_BACKGROUND, APP_NAME, AppIconGlyph } from "@/lib/app-branding";
 
-type NavDatabase = { name: string; label: string };
+type NavDatabase = { name: string };
 type NavTable = { name: string; kind: "table" | "view" };
 
 /**
@@ -99,7 +99,7 @@ export function SideNav({
                 icon={Database}
                 active={isActive}
               >
-                {entry.label}
+                {entry.name}
               </NavLink>
               {isActive && (
                 <div className="border-border ml-4 flex flex-col border-l pl-2.5">

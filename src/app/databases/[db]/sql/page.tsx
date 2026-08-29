@@ -28,7 +28,7 @@ export default async function SqlPage({ params }: { params: Promise<{ db: string
           href={`/databases/${db}/tables`}
           className="text-muted-foreground text-sm hover:underline"
         >
-          ← {entry.label} のテーブル一覧
+          ← {entry.name} のテーブル一覧
         </Link>
         <h1 className="text-xl font-semibold md:text-2xl">SQL実行</h1>
         <p className="text-muted-foreground text-sm">

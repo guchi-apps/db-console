@@ -3,6 +3,7 @@ import Link from "next/link";
 import { APP_VERSION } from "@/lib/app-version";
 import { MANAGED_NAME_PREFIX, getDatabasesConfig } from "@/lib/config";
 import { isAdminRoleConfigured } from "@/lib/admin-db";
+import { syncManagedAppDatabases } from "@/lib/managed-db-sync";
 import { requireSessionForPage } from "@/lib/session";
 import { listRegistrableDatabaseNames } from "@/lib/target-db";
 import { ChangelogDialog } from "@/components/changelog-dialog";
@@ -28,6 +29,8 @@ export default async function SettingsPage({
   const session = await requireSessionForPage();
   const { error } = await searchParams;
   const adminConfigured = isAdminRoleConfigured();
+  // app_ で始まるDBは登録操作なしで管理対象に取り込む（#97）。
+  await syncManagedAppDatabases(session.user.id);
   const databases = await getDatabasesConfig();
   const registeredNames = new Set(databases.map((entry) => entry.name));
   const registrableNames = (await listRegistrableDatabaseNames()).filter(
@@ -54,9 +57,10 @@ export default async function SettingsPage({
         <h1 className="text-xl font-semibold md:text-2xl">設定: 管理対象データベース</h1>
         <p className="text-muted-foreground text-sm">{session.user.email} でログイン中</p>
         <p className="text-muted-foreground text-sm">
-          「{MANAGED_NAME_PREFIX}」で始まるDBはこの画面から新規作成でき、閲覧・編集用ロールへの
-          権限付与まで自動で行います。それ以外の既存DBは、MariaDB側で db_console_data /
-          db_console_schema へGRANT済みのものだけを「既存DBを登録」から追加できます。
+          「{MANAGED_NAME_PREFIX}」で始まるDBは、この画面を開いた時点で権限付与まで含めて自動的に
+          管理対象へ登録されます（新規作成もこの画面から行えます）。それ以外の既存DBは、MariaDB側で
+          db_console_data / db_console_schema へGRANT済みのものだけを「既存DBを登録」から追加できます。
+          削除したDBは自動登録の対象から外れ、戻したいときは「既存DBを登録」から登録し直せます。
         </p>
       </div>
 
@@ -74,20 +78,13 @@ export default async function SettingsPage({
           <ul className="flex flex-col gap-3">
             {databases.map((entry) => (
               <li key={entry.name} className="flex flex-col gap-3 rounded-lg border p-4">
-                <span className="text-muted-foreground text-sm">{entry.name}</span>
+                <span className="font-medium">{entry.name}</span>
                 <form
                   id={`update-db-${entry.name}`}
                   action={updateManagedDatabaseAction}
-                  className="flex flex-col gap-2"
+                  className="hidden"
                 >
                   <input type="hidden" name="name" value={entry.name} />
-                  <input
-                    name="label"
-                    defaultValue={entry.label}
-                    required
-                    className="rounded-md border px-3 py-2 text-sm"
-                    aria-label="表示名"
-                  />
                 </form>
                 <div className="flex justify-between gap-3">
                   <select
@@ -114,7 +111,6 @@ export default async function SettingsPage({
                     <DeleteManagedDatabaseButton
                       action={deleteManagedDatabaseAction}
                       name={entry.name}
-                      label={entry.label}
                     />
                   </div>
                 </div>
@@ -140,13 +136,6 @@ export default async function SettingsPage({
                   placeholder={`${MANAGED_NAME_PREFIX}myapp`}
                   aria-label="DB名"
                   className="rounded-md border px-3 py-2 font-mono text-sm"
-                />
-                <input
-                  name="label"
-                  placeholder="表示名（例: 経費管理）"
-                  required
-                  aria-label="表示名"
-                  className="rounded-md border px-3 py-2 text-sm"
                 />
                 <select
                   name="mode"
@@ -206,12 +195,6 @@ export default async function SettingsPage({
                     </option>
                   ))}
                 </select>
-                <input
-                  name="label"
-                  placeholder="表示名（例: 経費管理）"
-                  required
-                  className="rounded-md border px-3 py-2 text-sm"
-                />
                 <select
                   name="mode"
                   defaultValue="read-only"

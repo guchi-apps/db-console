@@ -47,7 +47,7 @@ export default async function RootLayout({
           // md未満: 1カラム＋下タブバー（従来どおり）。md以上: 左サイドバー＋本文の2カラム。
           <div className="flex min-h-full flex-1 flex-col md:flex-row">
             <SideNav
-              databases={databases.map(({ name, label }) => ({ name, label }))}
+              databases={databases.map(({ name }) => ({ name }))}
               email={session.user.email}
             />
             <div className="flex min-h-full min-w-0 flex-1 flex-col pb-14 md:pb-0">

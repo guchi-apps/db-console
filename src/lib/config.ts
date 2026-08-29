@@ -17,6 +17,8 @@ export const FORBIDDEN_DATABASE_NAMES = new Set([
 // 新規作成・権限変更の対象は app_ で始まるDB・ユーザーだけに限定する。
 // 既存の管理対象DB（wordpress 等）の登録・閲覧はこの制限の対象外で、
 // あくまで「このアプリが新しく作る・権限を書き換える」対象を絞るための制限。
+// この接頭辞は #97 から「自動的に管理対象へ取り込む」対象も兼ねる
+// （src/lib/managed-db-sync.ts）。app_ 以外は従来どおり設定画面から手で登録する。
 export const MANAGED_NAME_PREFIX = "app_";
 
 export class UnmanagedNameError extends Error {
@@ -42,7 +44,6 @@ export type DatabaseMode = (typeof DATABASE_MODES)[number];
 
 export interface DatabaseEntry {
   name: string;
-  label: string;
   mode: DatabaseMode;
 }
 
@@ -66,30 +67,43 @@ export const databaseNameSchema = z
     message: "システムDBは管理対象に指定できません",
   });
 
-export const databaseLabelSchema = z.string().min(1);
 export const databaseModeSchema = z.enum(DATABASE_MODES);
 
 export const databaseEntryInputSchema = z.object({
   name: databaseNameSchema,
-  label: databaseLabelSchema,
   mode: databaseModeSchema,
 });
 
 export type DatabaseEntryInput = z.infer<typeof databaseEntryInputSchema>;
 
-function toDatabaseEntry(row: { name: string; label: string; mode: PrismaDatabaseMode }): DatabaseEntry {
-  return { name: row.name, label: row.label, mode: DB_MODE_TO_APP[row.mode] };
+function toDatabaseEntry(row: { name: string; mode: PrismaDatabaseMode }): DatabaseEntry {
+  return { name: row.name, mode: DB_MODE_TO_APP[row.mode] };
 }
 
-/** 管理対象DBの許可リストを取得する（db-console 自身のメタデータDBに保存されている）。 */
+/**
+ * 管理対象DBの許可リストを取得する（db-console 自身のメタデータDBに保存されている）。
+ * 除外中（excludedAt が入っている）の行は許可リストに含めない。
+ */
 export async function getDatabasesConfig(): Promise<DatabaseEntry[]> {
-  const rows = await db.managedDatabase.findMany({ orderBy: { name: "asc" } });
+  const rows = await db.managedDatabase.findMany({
+    where: { excludedAt: null },
+    orderBy: { name: "asc" },
+  });
   return rows.map(toDatabaseEntry);
+}
+
+/**
+ * 自動登録の判定用に、除外中のものも含めた登録済みDB名をすべて返す（#97）。
+ * 除外したDBを次の描画で登録し直さないために使う。
+ */
+export async function listAllManagedDatabaseNames(): Promise<string[]> {
+  const rows = await db.managedDatabase.findMany({ select: { name: true } });
+  return rows.map((row) => row.name);
 }
 
 export async function getDatabaseEntry(name: string): Promise<DatabaseEntry | undefined> {
   const row = await db.managedDatabase.findUnique({ where: { name } });
-  return row ? toDatabaseEntry(row) : undefined;
+  return row && row.excludedAt === null ? toDatabaseEntry(row) : undefined;
 }
 
 export async function isDatabaseAllowed(name: string): Promise<boolean> {
@@ -106,29 +120,45 @@ export class DuplicateDatabaseError extends Error {
 export async function createDatabaseEntry(input: DatabaseEntryInput): Promise<DatabaseEntry> {
   const parsed = databaseEntryInputSchema.parse(input);
   const existing = await db.managedDatabase.findUnique({ where: { name: parsed.name } });
-  if (existing) {
+  if (existing && existing.excludedAt === null) {
     throw new DuplicateDatabaseError(parsed.name);
   }
+  // 一度除外したDBを登録し直すときは、除外を解除して指定のモードへ戻す。
+  if (existing) {
+    const revived = await db.managedDatabase.update({
+      where: { name: parsed.name },
+      data: { excludedAt: null, mode: APP_MODE_TO_DB[parsed.mode] },
+    });
+    return toDatabaseEntry(revived);
+  }
   const row = await db.managedDatabase.create({
-    data: { name: parsed.name, label: parsed.label, mode: APP_MODE_TO_DB[parsed.mode] },
+    data: { name: parsed.name, mode: APP_MODE_TO_DB[parsed.mode] },
   });
   return toDatabaseEntry(row);
 }
 
 export async function updateDatabaseEntry(
   name: string,
-  input: { label: string; mode: DatabaseMode },
+  input: { mode: DatabaseMode },
 ): Promise<DatabaseEntry> {
-  const label = databaseLabelSchema.parse(input.label);
   const mode = databaseModeSchema.parse(input.mode);
   const row = await db.managedDatabase.update({
     where: { name },
-    data: { label, mode: APP_MODE_TO_DB[mode] },
+    data: { mode: APP_MODE_TO_DB[mode] },
   });
   return toDatabaseEntry(row);
 }
 
+/**
+ * 管理対象から外す。`app_` で始まるDBは行を消しても自動登録（managed-db-sync.ts）で
+ * 戻ってきてしまうため、行は残して「除外中」にする（#97）。
+ * 除外したDBは設定画面の「既存DBを登録」から登録し直せる。
+ */
 export async function deleteDatabaseEntry(name: string): Promise<void> {
+  if (isManagedName(name)) {
+    await db.managedDatabase.update({ where: { name }, data: { excludedAt: new Date() } });
+    return;
+  }
   await db.managedDatabase.delete({ where: { name } });
 }
 
