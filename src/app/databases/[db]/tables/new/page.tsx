@@ -26,14 +26,14 @@ export default async function NewTablePage({
   }
 
   return (
-    <main className="mx-auto flex w-full min-w-0 max-w-4xl flex-1 flex-col gap-4 p-6">
+    <main className="mx-auto flex w-full min-w-0 max-w-4xl flex-1 flex-col gap-4 p-6 md:p-8">
       <Link
         href={`/databases/${db}/tables`}
         className="text-muted-foreground text-sm hover:underline"
       >
         ← {entry.label} のテーブル一覧
       </Link>
-      <h1 className="text-xl font-semibold">テーブルを作成</h1>
+      <h1 className="text-xl font-semibold md:text-2xl">テーブルを作成</h1>
 
       {error && (
         <p className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">

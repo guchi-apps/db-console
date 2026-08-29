@@ -30,7 +30,7 @@ export default async function TableDangerPage({
   const { total } = await getTableRows(db, table, { pageSize: 1 });
 
   return (
-    <main className="mx-auto flex w-full min-w-0 max-w-2xl flex-1 flex-col gap-6 p-6">
+    <main className="mx-auto flex w-full min-w-0 max-w-2xl flex-1 flex-col gap-6 p-6 md:p-8">
       <Link
         href={`/databases/${db}/tables/${table}/structure`}
         className="text-muted-foreground text-sm hover:underline"
