@@ -113,8 +113,8 @@ export default async function TableRowsPage({
   }
 
   return (
-    <main className="mx-auto flex w-full min-w-0 max-w-5xl flex-1 flex-col gap-4 p-6">
-      <div className="flex flex-col">
+    <main className="mx-auto flex w-full min-w-0 max-w-5xl flex-1 flex-col gap-4 p-6 md:max-w-none md:gap-5 md:p-8">
+      <div className="flex flex-col md:border-b md:pb-4">
         <Link
           href={`/databases/${db}/tables`}
           className="text-muted-foreground text-sm hover:underline"
@@ -122,7 +122,7 @@ export default async function TableRowsPage({
           ← {entry.name} のテーブル一覧
         </Link>
         <div className="flex items-center justify-between gap-2">
-          <h1 className="flex min-w-0 items-center gap-2 text-xl font-semibold">
+          <h1 className="flex min-w-0 items-center gap-2 text-xl font-semibold md:text-2xl">
             <span className="truncate">{table}</span>
             {isView && (
               <span className="shrink-0 rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-xs font-normal text-sky-700">
@@ -171,8 +171,9 @@ export default async function TableRowsPage({
         </p>
       )}
 
-      <div className="flex min-w-0 flex-col gap-2">
-        <form className="flex min-w-0 gap-2" action="" method="get">
+      {/* md以上は検索と操作ボタンを1行のツールバーにまとめる。 */}
+      <div className="flex min-w-0 flex-col gap-2 md:flex-row md:items-center md:gap-3">
+        <form className="flex min-w-0 gap-2 md:max-w-md md:flex-1" action="" method="get">
           <input
             type="text"
             name="search"
@@ -187,7 +188,7 @@ export default async function TableRowsPage({
             検索
           </button>
         </form>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 md:ml-auto md:shrink-0">
           <Link
             href={`/api/databases/${db}/tables/${table}/export/csv${
               query.search ? `?search=${encodeURIComponent(query.search)}` : ""
@@ -258,11 +259,12 @@ export default async function TableRowsPage({
           </div>
         )}
 
-        {/* デスクトップ: 表形式 */}
-        <div className="hidden overflow-x-auto rounded-lg border md:block">
+        {/* デスクトップ: 表形式。高さを抑えて表の中だけを縦スクロールさせ、見出し行を固定する。 */}
+        <div className="hidden max-h-[70vh] overflow-auto rounded-lg border md:block">
           <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/50">
+            {/* 縦スクロールしても列名が見えるよう固定する。tr の背景はセルの下に隠れるため th に塗る。 */}
+            <thead className="sticky top-0 z-10">
+              <tr className="[&>th]:bg-muted [&>th]:shadow-[inset_0_-1px_0_var(--border)]">
                 {canEditRows && <th className="px-3 py-2" />}
                 {result.columns.map((column) => {
                   const isSorted = query.sortColumn === column;
@@ -294,7 +296,7 @@ export default async function TableRowsPage({
                 );
                 const pkJson = JSON.stringify(pkValues);
                 return (
-                  <tr key={i} className="border-b last:border-0">
+                  <tr key={i} className="border-b last:border-0 hover:bg-accent/50">
                     {canEditRows && (
                       <td className="px-3 py-2">
                         <input type="checkbox" name="__pk" value={pkJson} />

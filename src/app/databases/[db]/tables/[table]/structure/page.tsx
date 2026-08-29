@@ -58,16 +58,16 @@ export default async function TableStructurePage({
   const viewDefinition = isView ? await getViewDefinition(db, table) : null;
 
   return (
-    <main className="mx-auto flex w-full min-w-0 max-w-4xl flex-1 flex-col gap-6 p-6">
-      <div className="flex flex-col">
+    <main className="mx-auto flex w-full min-w-0 max-w-4xl flex-1 flex-col gap-6 p-6 md:max-w-6xl md:p-8">
+      <div className="flex flex-col md:border-b md:pb-4">
         <Link
           href={`/databases/${db}/tables/${table}`}
           className="text-muted-foreground text-sm hover:underline"
         >
           ← {table} のレコード一覧
         </Link>
-        <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-semibold">
+        <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between md:gap-3">
+          <h1 className="text-xl font-semibold md:text-2xl">
             {table} の{isView ? "定義" : "構造"}
           </h1>
           {/* SQL出力は SHOW CREATE TABLE を使うため、SHOW VIEW 権限のないビューでは出さない。 */}
@@ -131,7 +131,7 @@ export default async function TableStructurePage({
             </thead>
             <tbody>
               {columns.map((column) => (
-                <tr key={column.name} className="border-b last:border-0">
+                <tr key={column.name} className="border-b last:border-0 hover:bg-accent/50">
                   <td className="px-3 py-2 font-medium">{column.name}</td>
                   <td className="px-3 py-2">{column.columnType}</td>
                   <td className="px-3 py-2">{column.isNullable ? "YES" : "NO"}</td>
@@ -253,7 +253,7 @@ export default async function TableStructurePage({
               </thead>
               <tbody>
                 {indexes.map((index) => (
-                  <tr key={index.name} className="border-b last:border-0">
+                  <tr key={index.name} className="border-b last:border-0 hover:bg-accent/50">
                     <td className="px-3 py-2 font-medium">{index.name}</td>
                     <td className="px-3 py-2">
                       {index.name === "PRIMARY" ? "PRIMARY KEY" : index.unique ? "UNIQUE" : "INDEX"}

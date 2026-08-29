@@ -41,12 +41,12 @@ export default async function DatabaseUsersPage({
   }
 
   return (
-    <main className="mx-auto flex w-full min-w-0 max-w-2xl flex-1 flex-col gap-6 p-6">
-      <div className="flex flex-col gap-1">
+    <main className="mx-auto flex w-full min-w-0 max-w-2xl flex-1 flex-col gap-6 p-6 md:max-w-6xl md:p-8">
+      <div className="flex flex-col gap-1 md:border-b md:pb-4">
         <Link href="/settings" className="text-muted-foreground text-sm hover:underline">
           ← 設定
         </Link>
-        <h1 className="text-xl font-semibold">設定: DBユーザー</h1>
+        <h1 className="text-xl font-semibold md:text-2xl">設定: DBユーザー</h1>
         <p className="text-muted-foreground text-sm">
           MariaDB上の「{MANAGED_NAME_PREFIX}」で始まるアカウントだけを扱います。パスワードは
           保存しないため、作成・再発行の直後に1度だけ表示します。
@@ -85,7 +85,7 @@ export default async function DatabaseUsersPage({
       {configured && (
         <>
           <h2 className="font-medium">ユーザー一覧</h2>
-          <ul className="flex flex-col gap-3">
+          <ul className="flex flex-col gap-3 xl:grid xl:grid-cols-2 xl:items-start xl:gap-4">
             {users.map((account) => {
               const key = `${account.user}@${account.host}`;
               const otherGrants = account.grants.filter(
