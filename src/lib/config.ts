@@ -1,5 +1,4 @@
 import { z } from "zod";
-import type { DatabaseMode as PrismaDatabaseMode } from "@prisma/client";
 
 import { db } from "@/lib/db";
 
@@ -39,25 +38,14 @@ export function assertManagedName(kind: string, name: string): void {
   }
 }
 
-export const DATABASE_MODES = ["read-only", "data-write", "schema-write"] as const;
-export type DatabaseMode = (typeof DATABASE_MODES)[number];
-
+// 管理対象DBごとの操作モード（閲覧のみ / データ編集可 / 構造変更可）は #105 で廃止した。
+// 許可リストに載っているDBはすべて構造変更まで行える。危険なのは設定ではなく操作の側だと
+// 捉え直し、構造変更（DDL）を実行する瞬間に確認ダイアログと再認証を挟む方式へ変えている
+// （src/lib/reauth.ts の assertSchemaChangeReauth を参照）。モードを復活させる変更は
+// この決定を覆すことになるので、Issueで相談すること。
 export interface DatabaseEntry {
   name: string;
-  mode: DatabaseMode;
 }
-
-const DB_MODE_TO_APP: Record<PrismaDatabaseMode, DatabaseMode> = {
-  READ_ONLY: "read-only",
-  DATA_WRITE: "data-write",
-  SCHEMA_WRITE: "schema-write",
-};
-
-const APP_MODE_TO_DB: Record<DatabaseMode, PrismaDatabaseMode> = {
-  "read-only": "READ_ONLY",
-  "data-write": "DATA_WRITE",
-  "schema-write": "SCHEMA_WRITE",
-};
 
 export const databaseNameSchema = z
   .string()
@@ -67,17 +55,14 @@ export const databaseNameSchema = z
     message: "システムDBは管理対象に指定できません",
   });
 
-export const databaseModeSchema = z.enum(DATABASE_MODES);
-
 export const databaseEntryInputSchema = z.object({
   name: databaseNameSchema,
-  mode: databaseModeSchema,
 });
 
 export type DatabaseEntryInput = z.infer<typeof databaseEntryInputSchema>;
 
-function toDatabaseEntry(row: { name: string; mode: PrismaDatabaseMode }): DatabaseEntry {
-  return { name: row.name, mode: DB_MODE_TO_APP[row.mode] };
+function toDatabaseEntry(row: { name: string }): DatabaseEntry {
+  return { name: row.name };
 }
 
 /**
@@ -123,29 +108,15 @@ export async function createDatabaseEntry(input: DatabaseEntryInput): Promise<Da
   if (existing && existing.excludedAt === null) {
     throw new DuplicateDatabaseError(parsed.name);
   }
-  // 一度除外したDBを登録し直すときは、除外を解除して指定のモードへ戻す。
+  // 一度除外したDBを登録し直すときは、行を作り直さず除外を解除する。
   if (existing) {
     const revived = await db.managedDatabase.update({
       where: { name: parsed.name },
-      data: { excludedAt: null, mode: APP_MODE_TO_DB[parsed.mode] },
+      data: { excludedAt: null },
     });
     return toDatabaseEntry(revived);
   }
-  const row = await db.managedDatabase.create({
-    data: { name: parsed.name, mode: APP_MODE_TO_DB[parsed.mode] },
-  });
-  return toDatabaseEntry(row);
-}
-
-export async function updateDatabaseEntry(
-  name: string,
-  input: { mode: DatabaseMode },
-): Promise<DatabaseEntry> {
-  const mode = databaseModeSchema.parse(input.mode);
-  const row = await db.managedDatabase.update({
-    where: { name },
-    data: { mode: APP_MODE_TO_DB[mode] },
-  });
+  const row = await db.managedDatabase.create({ data: { name: parsed.name } });
   return toDatabaseEntry(row);
 }
 
@@ -160,15 +131,4 @@ export async function deleteDatabaseEntry(name: string): Promise<void> {
     return;
   }
   await db.managedDatabase.delete({ where: { name } });
-}
-
-/** 破壊的操作の可否など、モードの強さを比較するためのランク。 */
-const MODE_RANK: Record<DatabaseMode, number> = {
-  "read-only": 0,
-  "data-write": 1,
-  "schema-write": 2,
-};
-
-export function modeAtLeast(mode: DatabaseMode, required: DatabaseMode): boolean {
-  return MODE_RANK[mode] >= MODE_RANK[required];
 }

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { getDatabaseEntry, modeAtLeast } from "@/lib/config";
+import { getDatabaseEntry } from "@/lib/config";
 import { getTableColumns, getTableKind, getRowByPrimaryKey } from "@/lib/introspection";
 import { requireSessionForPage } from "@/lib/session";
 import { RowFormFields } from "@/components/row-form-fields";
@@ -30,7 +30,7 @@ export default async function EditRowPage({
   const { pk: pkRaw, error } = await searchParams;
 
   const entry = await getDatabaseEntry(db);
-  if (!entry || !modeAtLeast(entry.mode, "data-write") || !pkRaw) {
+  if (!entry || !pkRaw) {
     notFound();
   }
 

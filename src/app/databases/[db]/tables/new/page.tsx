@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { getDatabaseEntry, modeAtLeast } from "@/lib/config";
+import { getDatabaseEntry } from "@/lib/config";
 import { requireSessionForPage } from "@/lib/session";
+import { isReauthValid } from "@/lib/reauth";
 import { COLUMN_TYPE_OPTIONS } from "@/lib/column-types";
 import { ColumnTypeFields } from "@/components/column-type-fields";
+import { SchemaChangeConfirmButton } from "@/components/schema-change-confirm-button";
+import { SchemaChangeNotice } from "@/components/schema-change-notice";
 import { createTableAction } from "../actions";
 
 const COLUMN_ROWS = 8;
@@ -21,9 +24,11 @@ export default async function NewTablePage({
   const { error } = await searchParams;
 
   const entry = await getDatabaseEntry(db);
-  if (!entry || !modeAtLeast(entry.mode, "schema-write")) {
+  if (!entry) {
     notFound();
   }
+
+  const reauthVerified = await isReauthValid();
 
   return (
     <main className="mx-auto flex w-full min-w-0 max-w-4xl flex-1 flex-col gap-4 p-6 md:p-8">
@@ -40,6 +45,8 @@ export default async function NewTablePage({
           {error}
         </p>
       )}
+
+      <SchemaChangeNotice verified={reauthVerified} returnTo={`/databases/${db}/tables/new`} />
 
       <form action={createTableAction} className="flex min-w-0 flex-col gap-4">
         <input type="hidden" name="__db" value={db} />
@@ -99,12 +106,19 @@ export default async function NewTablePage({
         </p>
 
         <div className="flex justify-end">
-          <button
-            type="submit"
+          <SchemaChangeConfirmButton
+            title="テーブル作成の確認"
+            description={`${db} にテーブルを作成します。`}
+            reauthVerified={reauthVerified}
+            fields={[
+              { label: "操作", value: "テーブルを作成" },
+              { label: "データベース", value: db },
+              { label: "テーブル名", field: "tableName" },
+            ]}
             className="min-h-11 rounded-md border px-4 py-2 text-sm hover:bg-accent"
           >
             テーブルを作成
-          </button>
+          </SchemaChangeConfirmButton>
         </div>
       </form>
     </main>

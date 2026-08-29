@@ -15,7 +15,7 @@ import {
   type ColumnModificationInput,
 } from "@/lib/introspection";
 import { buildSqlType, KEEP_CURRENT_TYPE_KEY } from "@/lib/column-types";
-import { isReauthValid } from "@/lib/reauth";
+import { assertSchemaChangeReauth } from "@/lib/reauth";
 import { writeAuditLog } from "@/lib/audit";
 
 function structurePath(db: string, table: string): string {
@@ -34,6 +34,9 @@ export async function addColumnAction(formData: FormData): Promise<void> {
   const param2 = String(formData.get("param2") ?? "");
   const nullable = formData.get("nullable") === "on";
   const defaultValue = String(formData.get("defaultValue") ?? "").trim();
+
+  // カラムの追加は構造変更なので、実行前に本人確認を求める（#105）。
+  await assertSchemaChangeReauth(path);
 
   try {
     const sqlType = buildSqlType(typeKey, param1, param2);
@@ -79,6 +82,9 @@ export async function modifyColumnAction(formData: FormData): Promise<void> {
   const comment = String(formData.get("comment") ?? "").trim();
   const positionKind = String(formData.get("positionKind") ?? "keep");
   const positionAfter = String(formData.get("positionAfter") ?? "");
+
+  // カラムの変更は構造変更なので、実行前に本人確認を求める（#105）。
+  await assertSchemaChangeReauth(path);
 
   try {
     let sqlType: string;
@@ -141,9 +147,7 @@ export async function dropColumnAction(formData: FormData): Promise<void> {
   if (confirmName !== columnName) {
     redirect(`${path}?error=${encodeURIComponent("カラム名の入力が一致しません")}`);
   }
-  if (!(await isReauthValid())) {
-    redirect(`/reauth?returnTo=${encodeURIComponent(path)}`);
-  }
+  await assertSchemaChangeReauth(path);
 
   try {
     await dropColumn(db, table, columnName);
@@ -185,6 +189,9 @@ export async function addIndexAction(formData: FormData): Promise<void> {
     .split(",")
     .map((c) => c.trim())
     .filter(Boolean);
+
+  // インデックスの追加は構造変更なので、実行前に本人確認を求める（#105）。
+  await assertSchemaChangeReauth(path);
 
   try {
     if (kind === "primary") {
@@ -228,9 +235,7 @@ export async function dropIndexAction(formData: FormData): Promise<void> {
   if (confirmName !== indexName) {
     redirect(`${path}?error=${encodeURIComponent("インデックス名の入力が一致しません")}`);
   }
-  if (!(await isReauthValid())) {
-    redirect(`/reauth?returnTo=${encodeURIComponent(path)}`);
-  }
+  await assertSchemaChangeReauth(path);
 
   try {
     await dropIndex(db, table, indexName);

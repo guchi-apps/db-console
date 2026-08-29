@@ -39,11 +39,40 @@ This version has breaking changes — APIs, conventions, and file structure may 
 `SHOW VIEW` はローカルの `scripts/setup-db.sh` では両ロールへ付与済み。**本番VPSのロールには
 付いていない**ため、本番でビュー定義を表示するにはGRANTの追加が要る（#86 から切り出した手作業Issue）。
 
+### 操作モードの廃止と構造変更のゲート（#105）
+
+**管理対象DBごとの操作モード（閲覧のみ / データ編集可 / 構造変更可）は廃止した。**
+`ManagedDatabase.mode` 列・`DatabaseMode` enum・`modeAtLeast()` はいずれも存在しない。
+許可リストに載っているDBはすべて構造変更まで行える。**モードを復活させる変更はこの決定を
+覆すことになるので、Issueで相談する。**
+
+歯止めは設定ではなく操作の側に置いた。**構造（DDL）を変えるサーバーアクションは、先頭で必ず
+`assertSchemaChangeReauth(returnTo)`（`src/lib/reauth.ts`）を呼ぶ。** 対象はテーブルの
+作成・名前変更・空データ化・削除、カラムの追加・変更・削除、インデックスの追加・削除。
+レコードの読み書きにはゲートを掛けない。
+
+**画面側の確認ダイアログ（`SchemaChangeConfirmButton`）は補助であって、認可ではない。**
+`type="button"` でダイアログを開き、実行を選んだときに `form.requestSubmit()` で送信する
+（ダイアログはポータルでフォームの外に出るため `type="submit"` では送れない）。
+ブラウザ側だけの仕掛けなので、**サーバーアクション側の再認証チェックを省略しないこと。**
+
+**再認証へリダイレクトすると入力中のフォームは失われる。** そのため構造を扱う画面の先頭に
+`SchemaChangeNotice`（`src/components/schema-change-notice.tsx`）を置き、入力を始める前に
+本人確認を済ませられる導線を出している。
+
+`getPoolForOperation(db, operation)` の第2引数は **どのロールのプールを使うかを選ぶためだけの値**
+になった（`DatabaseOperation`）。「このDBでその操作をしてよいか」の判定には使わない。
+
 ### SQL実行画面で通すSQL（#85）
 
 種別は `classifyStatement()`（`src/lib/sql-guard.ts`）が先頭キーワードから決め、`OTHER` は
 `assertSupportedQueryType()` が拒否する。DML/DDLに加えて `SHOW` / `DESCRIBE` / `EXPLAIN` の
-読み取り専用SQLを通す。この3種別は `read-only` モードのDBでも実行でき、プールは `getDataPool()`。
+読み取り専用SQLを通す。この3種別のプールは `getDataPool()`。
+
+**`CREATE TABLE` / `ALTER TABLE` は構造変更なので、実行前に確認ダイアログと再認証が要る**（#105）。
+判定は `isSchemaChangeSql()`（`src/lib/sql-guard.ts`）で、画面側（`sql-form.tsx`）とサーバー側
+（`executeSqlAction`）の両方が同じ関数を使う。**サーバー側は `redirect()` せず状態を返す**——
+入力中のSQLが消えるため、画面に本人確認への導線を出して再実行させる。
 
 **`SHOW` は許可リストで判定する（拒否リストにしない）。** 2語目が
 `CREATE`・`COLUMNS`・`FIELDS`・`INDEX`・`INDEXES`・`KEYS`・`TABLE`(STATUS)・`TABLES`・`TRIGGERS`、
@@ -101,7 +130,12 @@ MySQL/MariaDBはGRANT文のDB名を「パターン」として扱い、付与す
 
 `app_` で始まるDBは登録操作なしで管理対象になる。DB一覧・設定画面の描画時に
 `src/lib/managed-db-sync.ts` の `syncManagedAppDatabases()` が走り、未登録のものを
-**GRANT してから** `ManagedDatabase` へ登録する（既定モードは `data-write`）。
+**GRANT してから** `ManagedDatabase` へ登録する。GRANTは data / schema の両ロールへ行う。
+
+**#105 より前に登録されたDBには schema ロールへのGRANTが無い。** 同期のたびに
+`listSchemaRoleGrantedDatabaseNames()`（`src/lib/admin-db.ts`）で `mysql.db` を引き、
+未GRANTの登録済みDBだけへ GRANT を流して差分を埋める（`backfillSchemaRoleGrants()`）。
+差分が無ければ GRANT は1本も発行されない。
 
 **列挙は管理ロールでなければできない。** `db_console_data` / `db_console_schema` の
 `information_schema.schemata` は**GRANT済みのDBしか返さない**ため、
