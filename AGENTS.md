@@ -56,9 +56,15 @@ This version has breaking changes — APIs, conventions, and file structure may 
 ときは通さない。** MariaDBの `ANALYZE` 系は対象の文を実際に実行するため読み取り専用ではなく、
 `EXPLAIN FOR CONNECTION` は他セッションを覗く。`EXPLAIN FORMAT=JSON SELECT ...` は通る。
 
-ユーザーが打った `SHOW CREATE VIEW` は `SHOW VIEW` 権限が無ければDB側のエラーになる（本番VPSの
-ロールには付いていない）。アプリ自身がビュー定義を読むときは従来どおり
-`information_schema.views.view_definition` を使う。
+**ビューを対象にした `SHOW CREATE VIEW` / `SHOW CREATE TABLE` は、本番では必ず失敗する。**
+本番VPSのロールに `SHOW VIEW` が無く `SHOW VIEW command denied` になる（ローカルは
+`scripts/setup-db.sh` が付与済みのため再現しない。#86 から切り出した手作業Issue待ち）。
+手打ちで失敗するだけなので許可対象からは外していないが、アプリ自身がビュー定義を読むときは
+従来どおり `information_schema.views.view_definition` を使う。
+
+**`SHOW GRANTS` を落としているのは許可リストだけ。** `assertNoForbiddenSql()` の `/\bGRANT\b/i` は
+`GRANTS` に一致しない（`\b` が `S` の手前で成立しない）ため、許可リストを拒否リストへ変えると
+`SHOW GRANTS` が通ってしまう。
 
 SQL実行は実行履歴（`SqlHistory`）と監査ログ（`AuditLog` の `SQL_EXECUTE`）の両方へ記録する。
 

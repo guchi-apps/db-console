@@ -221,6 +221,12 @@ describe("validateSqlForExecution（統合）", () => {
     expect(() => validateSqlForExecution("SHOW GRANTS FOR 'x'@'%'")).toThrow();
   });
 
+  it("SHOW GRANTSを落としているのは許可リストだけで、禁止SQL判定では通ってしまう", () => {
+    // /\bGRANT\b/i は "GRANTS" に一致しない。許可リストを拒否リストへ変えると通る。
+    expect(() => assertNoForbiddenSql("SHOW GRANTS FOR 'x'@'%'")).not.toThrow();
+    expect(classifyStatement("SHOW GRANTS FOR 'x'@'%'")).toBe("OTHER");
+  });
+
   it("SHOW CREATE USERは禁止SQLとして拒否する", () => {
     expect(() => validateSqlForExecution("SHOW CREATE USER 'x'@'%'")).toThrow();
   });
