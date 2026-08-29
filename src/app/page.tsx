@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { getDatabasesConfig } from "@/lib/config";
+import { syncManagedAppDatabases } from "@/lib/managed-db-sync";
 import { requireSessionForPage } from "@/lib/session";
 
 const MODE_LABEL: Record<string, string> = {
@@ -10,7 +11,9 @@ const MODE_LABEL: Record<string, string> = {
 };
 
 export default async function Home() {
-  await requireSessionForPage();
+  const session = await requireSessionForPage();
+  // app_ で始まるDBは登録操作なしで一覧に出す（#97）。
+  await syncManagedAppDatabases(session.user.id);
   const databases = await getDatabasesConfig();
 
   return (
@@ -28,10 +31,7 @@ export default async function Home() {
               href={`/databases/${entry.name}/tables`}
               className="flex items-center justify-between rounded-lg border p-4 hover:bg-accent"
             >
-              <div className="flex flex-col">
-                <span className="font-medium">{entry.label}</span>
-                <span className="text-muted-foreground text-sm">{entry.name}</span>
-              </div>
+              <span className="font-medium">{entry.name}</span>
               <span className="text-muted-foreground text-xs">
                 {MODE_LABEL[entry.mode]}
               </span>
@@ -40,7 +40,7 @@ export default async function Home() {
         ))}
         {databases.length === 0 && (
           <li className="text-muted-foreground text-sm">
-            管理対象データベースが登録されていません。「設定」から登録してください。
+            管理対象データベースがありません。「設定」から登録してください。
           </li>
         )}
       </ul>

@@ -119,7 +119,7 @@ export default async function TableRowsPage({
           href={`/databases/${db}/tables`}
           className="text-muted-foreground text-sm hover:underline"
         >
-          ← {entry.label} のテーブル一覧
+          ← {entry.name} のテーブル一覧
         </Link>
         <div className="flex items-center justify-between gap-2">
           <h1 className="flex min-w-0 items-center gap-2 text-xl font-semibold">

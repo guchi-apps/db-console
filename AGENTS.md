@@ -68,6 +68,23 @@ MySQL/MariaDBはGRANT文のDB名を「パターン」として扱い、付与す
 保存せず、作成・再発行の直後に画面で1度だけ表示する。**本番VPSには `db_console_admin` ロールが
 無い**ため、作られるまで本番の画面には「未設定」と出る（#91 から切り出した手作業Issue）。
 
+### `app_` で始まるDBの自動登録（#97）
+
+`app_` で始まるDBは登録操作なしで管理対象になる。DB一覧・設定画面の描画時に
+`src/lib/managed-db-sync.ts` の `syncManagedAppDatabases()` が走り、未登録のものを
+**GRANT してから** `ManagedDatabase` へ登録する（既定モードは `data-write`）。
+
+**列挙は管理ロールでなければできない。** `db_console_data` / `db_console_schema` の
+`information_schema.schemata` は**GRANT済みのDBしか返さない**ため、
+`listRegistrableDatabaseNames()`（`src/lib/target-db.ts`）には「まだGRANTしていない `app_` のDB」が
+出てこない。`` `app\_%` `` への GRANT OPTION を持つ `db_console_admin` で引く必要があり、
+そのため自動登録は**管理ロールが設定されている環境でだけ動く**（未設定の本番VPSでは従来どおり
+「既存DBを登録」からの手動登録になる）。LIKE の `_` はワイルドカードなのでエスケープする。
+
+自動登録された行を消しても次の描画で戻るため、設定画面の削除ボタンは自動登録の対象外のDB
+（`wordpress` 等）にだけ出す。**画面表示用の表示名（`ManagedDatabase.label`）は #97 で廃止した**——
+DB名をそのまま表示する。表示名を復活させる変更はこの決定を覆すことになるので、Issueで相談する。
+
 ## アプリ名・アイコン
 
 利用者に見せる名前とアイコンの一次情報源は `src/lib/app-branding.tsx`（`APP_NAME` / 配色 /

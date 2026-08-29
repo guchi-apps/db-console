@@ -29,24 +29,22 @@ describe("databaseNameSchema", () => {
 
 describe("databaseEntryInputSchema", () => {
   it("正しい入力をパースできる", () => {
-    const parsed = databaseEntryInputSchema.parse({
-      name: "app_car",
-      label: "車両管理",
-      mode: "data-write",
-    });
-    expect(parsed).toEqual({ name: "app_car", label: "車両管理", mode: "data-write" });
+    const parsed = databaseEntryInputSchema.parse({ name: "app_car", mode: "data-write" });
+    expect(parsed).toEqual({ name: "app_car", mode: "data-write" });
   });
 
   it("不正なmodeを拒否する", () => {
-    expect(() =>
-      databaseEntryInputSchema.parse({ name: "app_car", label: "車両管理", mode: "admin" }),
-    ).toThrow();
+    expect(() => databaseEntryInputSchema.parse({ name: "app_car", mode: "admin" })).toThrow();
   });
 
-  it("空のlabelを拒否する", () => {
-    expect(() =>
-      databaseEntryInputSchema.parse({ name: "app_car", label: "", mode: "read-only" }),
-    ).toThrow();
+  // 表示名（label）は #97 で廃止した。余分なキーを渡しても結果に混ざらないことを確かめる。
+  it("labelを渡してもパース結果に含まれない", () => {
+    const parsed = databaseEntryInputSchema.parse({
+      name: "app_car",
+      label: "車両管理",
+      mode: "read-only",
+    });
+    expect(parsed).toEqual({ name: "app_car", mode: "read-only" });
   });
 });
 

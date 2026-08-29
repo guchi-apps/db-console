@@ -27,7 +27,7 @@ export default async function TablesPage({
           ← データベース一覧
         </Link>
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold">{entry.label}</h1>
+          <h1 className="text-xl font-semibold">{entry.name}</h1>
           <div className="flex gap-2">
             <Link
               href={`/databases/${db}/sql`}
@@ -45,7 +45,6 @@ export default async function TablesPage({
             )}
           </div>
         </div>
-        <span className="text-muted-foreground text-sm">{entry.name}</span>
       </div>
 
       <ul className="flex flex-col gap-2">

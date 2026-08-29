@@ -7,6 +7,6 @@ export async function GET() {
   const { response } = await requireSessionForApi();
   if (response) return response;
 
-  const databases = getDatabasesConfig();
+  const databases = await getDatabasesConfig();
   return NextResponse.json({ databases });
 }

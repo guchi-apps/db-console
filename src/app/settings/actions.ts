@@ -28,7 +28,6 @@ function redirectWithError(message: string): never {
 export async function createDatabaseAction(formData: FormData): Promise<void> {
   const userId = await requireUserId();
   const name = String(formData.get("name") ?? "").trim();
-  const label = String(formData.get("label") ?? "").trim();
   const mode = String(formData.get("mode") ?? "") as DatabaseMode;
 
   try {
@@ -37,11 +36,8 @@ export async function createDatabaseAction(formData: FormData): Promise<void> {
       throw new Error(parsedName.error.issues[0]?.message ?? "DB名が不正です");
     }
     assertManagedName("DB名", name);
-    if (label.length === 0) {
-      throw new Error("表示名を入力してください");
-    }
     const { grantedAccounts } = await createDatabase(name, mode);
-    const entry = await createDatabaseEntry({ name, label, mode });
+    const entry = await createDatabaseEntry({ name, mode });
     await writeAuditLog({
       userId,
       action: "DATABASE_CREATE",
@@ -69,11 +65,10 @@ export async function createDatabaseAction(formData: FormData): Promise<void> {
 export async function createManagedDatabaseAction(formData: FormData): Promise<void> {
   const userId = await requireUserId();
   const name = String(formData.get("name") ?? "");
-  const label = String(formData.get("label") ?? "");
   const mode = String(formData.get("mode") ?? "") as DatabaseMode;
 
   try {
-    const entry = await createDatabaseEntry({ name, label, mode });
+    const entry = await createDatabaseEntry({ name, mode });
     await writeAuditLog({
       userId,
       action: "MANAGED_DB_CREATE",
@@ -101,11 +96,10 @@ export async function createManagedDatabaseAction(formData: FormData): Promise<v
 export async function updateManagedDatabaseAction(formData: FormData): Promise<void> {
   const userId = await requireUserId();
   const name = String(formData.get("name") ?? "");
-  const label = String(formData.get("label") ?? "");
   const mode = String(formData.get("mode") ?? "") as DatabaseMode;
 
   try {
-    const entry = await updateDatabaseEntry(name, { label, mode });
+    const entry = await updateDatabaseEntry(name, { mode });
     await writeAuditLog({
       userId,
       action: "MANAGED_DB_UPDATE",
