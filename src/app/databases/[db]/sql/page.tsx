@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 
 import { getDatabaseEntry } from "@/lib/config";
 import { requireSessionForPage } from "@/lib/session";
+import { isReauthValid } from "@/lib/reauth";
 import { db as prismaDb } from "@/lib/db";
+import { SchemaChangeNotice } from "@/components/schema-change-notice";
 import { SqlForm } from "./sql-form";
 
 export default async function SqlPage({ params }: { params: Promise<{ db: string }> }) {
@@ -15,6 +17,7 @@ export default async function SqlPage({ params }: { params: Promise<{ db: string
     notFound();
   }
 
+  const reauthVerified = await isReauthValid();
   const history = await prismaDb.sqlHistory.findMany({
     where: { userId: session.user.id, databaseName: db },
     orderBy: { createdAt: "desc" },
@@ -37,10 +40,13 @@ export default async function SqlPage({ params }: { params: Promise<{ db: string
           などの読み取り専用SQLを実行できます。GRANT/REVOKE/SET GLOBAL等の禁止SQL、
           DROP/TRUNCATEを含むSQL、条件（WHERE句）のないUPDATE/DELETE、
           SHOW GRANTS・SHOW PROCESSLIST・SHOW VARIABLESなどサーバー全体の情報を返すSQLは実行できません。
+          CREATE TABLE / ALTER TABLE は構造変更のため、実行前に確認と本人確認を求めます。
         </p>
       </div>
 
-      <SqlForm db={db} />
+      <SchemaChangeNotice verified={reauthVerified} returnTo={`/databases/${db}/sql`} />
+
+      <SqlForm db={db} reauthVerified={reauthVerified} />
 
       <section className="flex flex-col gap-2">
         <h2 className="font-medium">実行履歴（直近20件）</h2>

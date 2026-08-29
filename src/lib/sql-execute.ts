@@ -2,18 +2,18 @@ import type { FieldPacket, ResultSetHeader, RowDataPacket } from "mysql2";
 import type { SqlQueryType } from "@prisma/client";
 
 import { assertSafeDatabaseName, quoteIdentifier } from "@/lib/identifier";
-import { getPoolForOperation } from "@/lib/target-db";
-import type { DatabaseMode } from "@/lib/config";
+import { getPoolForOperation, type DatabaseOperation } from "@/lib/target-db";
 import { validateSqlForExecution } from "@/lib/sql-guard";
 
-const REQUIRED_MODE: Record<SqlQueryType, DatabaseMode> = {
+/** SQLの種別ごとに、どのロールのプールで実行するか（#105 以降、認可判定には使わない）。 */
+const OPERATION_BY_QUERY_TYPE: Record<SqlQueryType, DatabaseOperation> = {
   SELECT: "read-only",
   INSERT: "data-write",
   UPDATE: "data-write",
   DELETE: "data-write",
   CREATE_TABLE: "schema-write",
   ALTER_TABLE: "schema-write",
-  // SHOW / DESCRIBE / EXPLAIN は読み取り専用なので read-only モードのDBでも実行できる（#85）。
+  // SHOW / DESCRIBE / EXPLAIN は読み取り専用なので、通常操作用ロールで実行する（#85）。
   SHOW: "read-only",
   DESCRIBE: "read-only",
   EXPLAIN: "read-only",
@@ -40,7 +40,7 @@ export async function executeSql(
 ): Promise<SqlExecutionResult> {
   assertSafeDatabaseName(databaseName);
   const queryType = validateSqlForExecution(sql);
-  const pool = await getPoolForOperation(databaseName, REQUIRED_MODE[queryType]);
+  const pool = await getPoolForOperation(databaseName, OPERATION_BY_QUERY_TYPE[queryType]);
 
   const connection = await pool.getConnection();
   try {

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { getDatabaseEntry, modeAtLeast } from "@/lib/config";
+import { getDatabaseEntry } from "@/lib/config";
 import {
   getTableColumns,
   getTableIndexes,
@@ -10,9 +10,11 @@ import {
 } from "@/lib/introspection";
 import { IdentifierNotFoundError } from "@/lib/identifier";
 import { requireSessionForPage } from "@/lib/session";
+import { isReauthValid } from "@/lib/reauth";
 import { COLUMN_TYPE_OPTIONS } from "@/lib/column-types";
 import { ColumnEditFields, ColumnTypeSelectFields } from "@/components/column-type-fields";
-import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
+import { SchemaChangeConfirmButton } from "@/components/schema-change-confirm-button";
+import { SchemaChangeNotice } from "@/components/schema-change-notice";
 import { renameTableAction } from "../schema-actions";
 import {
   addColumnAction,
@@ -53,8 +55,11 @@ export default async function TableStructurePage({
   }
 
   // ビューはカラム型・定義の閲覧のみ。ALTER・RENAME・DROPはいずれも成立しないため導線を出さない。
+  // 管理対象DBごとの操作モードは #105 で廃止したため、ビューかどうかだけで導線を決める。
   const isView = kind === "view";
-  const canManageSchema = modeAtLeast(entry.mode, "schema-write") && !isView;
+  const canManageSchema = !isView;
+  const structurePath = `/databases/${db}/tables/${table}/structure`;
+  const reauthVerified = canManageSchema ? await isReauthValid() : false;
   const viewDefinition = isView ? await getViewDefinition(db, table) : null;
 
   return (
@@ -94,6 +99,10 @@ export default async function TableStructurePage({
         <p className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
         </p>
+      )}
+
+      {canManageSchema && (
+        <SchemaChangeNotice verified={reauthVerified} returnTo={structurePath} />
       )}
 
       {isView && (
@@ -151,12 +160,21 @@ export default async function TableStructurePage({
                           required
                           className="w-28 rounded-md border px-2 py-1 text-xs"
                         />
-                        <button
-                          type="submit"
+                        <SchemaChangeConfirmButton
+                          title="カラム削除の確認"
+                          description={`${db} の ${table} テーブルからカラムを削除します。`}
+                          reauthVerified={reauthVerified}
+                          tone="danger"
+                          fields={[
+                            { label: "操作", value: "カラムを削除" },
+                            { label: "テーブル", value: table },
+                            { label: "カラム名", field: "columnName" },
+                            { label: "型", value: column.columnType },
+                          ]}
                           className="rounded-md border border-red-300 px-2 py-1 text-xs text-red-600 hover:bg-red-50"
                         >
                           削除
-                        </button>
+                        </SchemaChangeConfirmButton>
                       </form>
                     </td>
                   )}
@@ -187,12 +205,31 @@ export default async function TableStructurePage({
                       .filter((c) => c.name !== column.name)
                       .map((c) => c.name)}
                   />
-                  <ConfirmSubmitButton
-                    confirmMessage={`${column.name} を変更します。型を狭めるとデータが失われる場合があります。よろしいですか？`}
+                  <SchemaChangeConfirmButton
+                    title="カラム変更の確認"
+                    description={`${db} の ${table} テーブルのカラムを変更します。型を狭めるとデータが失われる場合があります。`}
+                    reauthVerified={reauthVerified}
+                    fields={[
+                      { label: "操作", value: "カラムを変更" },
+                      { label: "テーブル", value: table },
+                      { label: "カラム名", value: column.name },
+                      { label: "型", field: "typeKey", kind: "select" },
+                      { label: "パラメータ1", field: "param1", empty: "なし" },
+                      { label: "パラメータ2", field: "param2", empty: "なし" },
+                      {
+                        label: "NULL許可",
+                        field: "nullable",
+                        kind: "checkbox",
+                        checkedLabel: "許可する",
+                        uncheckedLabel: "許可しない",
+                      },
+                      { label: "デフォルト", field: "defaultValue" },
+                      { label: "コメント", field: "comment" },
+                    ]}
                     className="min-h-11 rounded-md border px-3 text-sm hover:bg-accent"
                   >
                     保存
-                  </ConfirmSubmitButton>
+                  </SchemaChangeConfirmButton>
                 </form>
               </details>
             ))}
@@ -228,12 +265,30 @@ export default async function TableStructurePage({
               <input type="checkbox" name="nullable" defaultChecked className="h-4 w-4" />
               NULL許可
             </label>
-            <button
-              type="submit"
+            <SchemaChangeConfirmButton
+              title="カラム追加の確認"
+              description={`${db} の ${table} テーブルにカラムを追加します。`}
+              reauthVerified={reauthVerified}
+              fields={[
+                { label: "操作", value: "カラムを追加" },
+                { label: "テーブル", value: table },
+                { label: "カラム名", field: "columnName" },
+                { label: "型", field: "typeKey", kind: "select" },
+                { label: "パラメータ1", field: "param1", empty: "なし" },
+                { label: "パラメータ2", field: "param2", empty: "なし" },
+                {
+                  label: "NULL許可",
+                  field: "nullable",
+                  kind: "checkbox",
+                  checkedLabel: "許可する",
+                  uncheckedLabel: "許可しない",
+                },
+                { label: "デフォルト", field: "defaultValue" },
+              ]}
               className="min-h-11 rounded-md border px-3 text-sm hover:bg-accent"
             >
               カラム追加
-            </button>
+            </SchemaChangeConfirmButton>
           </form>
         )}
       </section>
@@ -272,12 +327,21 @@ export default async function TableStructurePage({
                             required
                             className="w-32 rounded-md border px-2 py-1 text-xs"
                           />
-                          <button
-                            type="submit"
+                          <SchemaChangeConfirmButton
+                            title="インデックス削除の確認"
+                            description={`${db} の ${table} テーブルからインデックスを削除します。`}
+                            reauthVerified={reauthVerified}
+                            tone="danger"
+                            fields={[
+                              { label: "操作", value: "インデックスを削除" },
+                              { label: "テーブル", value: table },
+                              { label: "インデックス名", field: "indexName" },
+                              { label: "対象カラム", value: index.columns.join(", ") },
+                            ]}
                             className="rounded-md border border-red-300 px-2 py-1 text-xs text-red-600 hover:bg-red-50"
                           >
                             削除
-                          </button>
+                          </SchemaChangeConfirmButton>
                         </form>
                       </td>
                     )}
@@ -330,12 +394,21 @@ export default async function TableStructurePage({
                   className="w-56 rounded-md border px-2 py-1 text-sm"
                 />
               </label>
-              <button
-                type="submit"
+              <SchemaChangeConfirmButton
+                title="インデックス追加の確認"
+                description={`${db} の ${table} テーブルにインデックスを追加します。`}
+                reauthVerified={reauthVerified}
+                fields={[
+                  { label: "操作", value: "インデックスを追加" },
+                  { label: "テーブル", value: table },
+                  { label: "種別", field: "kind", kind: "select" },
+                  { label: "インデックス名", field: "indexName", empty: "自動（PRIMARY）" },
+                  { label: "対象カラム", field: "columns" },
+                ]}
                 className="min-h-11 rounded-md border px-3 text-sm hover:bg-accent"
               >
                 インデックス追加
-              </button>
+              </SchemaChangeConfirmButton>
             </form>
           )}
         </section>
@@ -359,12 +432,19 @@ export default async function TableStructurePage({
               />
             </label>
             <div className="flex justify-end">
-              <button
-                type="submit"
+              <SchemaChangeConfirmButton
+                title="テーブル名変更の確認"
+                description={`${db} の ${table} テーブルの名前を変更します。`}
+                reauthVerified={reauthVerified}
+                fields={[
+                  { label: "操作", value: "テーブル名を変更" },
+                  { label: "現在の名前", value: table },
+                  { label: "新しい名前", field: "newName" },
+                ]}
                 className="min-h-11 rounded-md border px-3 text-sm hover:bg-accent"
               >
                 名前を変更
-              </button>
+              </SchemaChangeConfirmButton>
             </div>
           </form>
 

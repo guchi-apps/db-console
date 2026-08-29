@@ -4,12 +4,6 @@ import { getDatabasesConfig } from "@/lib/config";
 import { syncManagedAppDatabases } from "@/lib/managed-db-sync";
 import { requireSessionForPage } from "@/lib/session";
 
-const MODE_LABEL: Record<string, string> = {
-  "read-only": "閲覧のみ",
-  "data-write": "データ編集可",
-  "schema-write": "構造変更可",
-};
-
 export default async function Home() {
   const session = await requireSessionForPage();
   // app_ で始まるDBは登録操作なしで一覧に出す（#97）。
@@ -33,9 +27,6 @@ export default async function Home() {
               className="flex items-center justify-between gap-3 rounded-lg border p-4 hover:bg-accent md:h-full md:flex-col md:items-start md:gap-3"
             >
               <span className="min-w-0 truncate font-medium">{entry.name}</span>
-              <span className="text-muted-foreground shrink-0 text-xs md:rounded-full md:border md:px-2 md:py-0.5">
-                {MODE_LABEL[entry.mode]}
-              </span>
             </Link>
           </li>
         ))}

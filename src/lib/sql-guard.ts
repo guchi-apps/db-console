@@ -205,6 +205,28 @@ export function classifyStatement(sql: string): SqlQueryType {
  * 実行前の一括安全性チェック。ここを通過したSQLのみ実行してよい。
  * 呼び出し順は重要（複数文チェック→禁止SQL→種別判定→種別許可→DROP/TRUNCATE拒否→WHERE句必須）。
  */
+/**
+ * テーブル構造（DDL）を変えるSQLの種別（#105）。実行前に確認ダイアログと再認証を求める。
+ * SELECT・INSERT・UPDATE・DELETE と読み取り専用のSHOW/DESCRIBE/EXPLAINは従来どおり素通し。
+ */
+const SCHEMA_CHANGE_QUERY_TYPES: ReadonlySet<SqlQueryType> = new Set<SqlQueryType>([
+  "CREATE_TABLE",
+  "ALTER_TABLE",
+]);
+
+export function isSchemaChangeQueryType(queryType: SqlQueryType): boolean {
+  return SCHEMA_CHANGE_QUERY_TYPES.has(queryType);
+}
+
+/**
+ * 入力中のSQLが構造を変えるものかどうか。判定は先頭キーワードだけを見る classifyStatement に
+ * 委ねてあるため、ブラウザ側（SQL実行フォーム）からも同じ関数で判定できる。
+ * 実行可否そのものは validateSqlForExecution が別途チェックする。
+ */
+export function isSchemaChangeSql(sql: string): boolean {
+  return isSchemaChangeQueryType(classifyStatement(sql));
+}
+
 export function validateSqlForExecution(sql: string): SqlQueryType {
   assertSingleStatement(sql);
   assertNoForbiddenSql(sql);

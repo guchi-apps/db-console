@@ -1,6 +1,6 @@
 import mysql, { type Pool, type RowDataPacket } from "mysql2/promise";
 
-import { FORBIDDEN_DATABASE_NAMES, getDatabaseEntry, modeAtLeast, type DatabaseMode } from "@/lib/config";
+import { FORBIDDEN_DATABASE_NAMES, getDatabaseEntry } from "@/lib/config";
 
 // 管理対象DB（asset-manager, car-care, wordpress 等）への接続専用プール。
 // db-console 自身のメタデータDB（app_db_console）は lib/db.ts の Prisma 経由でアクセスする。
@@ -58,30 +58,28 @@ export class DatabaseNotAllowedError extends Error {
   }
 }
 
-export class ModeNotAllowedError extends Error {
-  constructor(databaseName: string, required: DatabaseMode) {
-    super(`${databaseName} では ${required} 操作が許可されていません`);
-    this.name = "ModeNotAllowedError";
-  }
-}
+/**
+ * 呼び出し側が行う操作の種類。**どのロールのプールを使うかを選ぶためだけの値**で、
+ * 「このDBでその操作をしてよいか」の判定には使わない（管理対象DBごとの操作モードは
+ * #105 で廃止し、許可リストに載っているDBはすべて構造変更まで行える）。
+ * 構造変更の歯止めは、実行前の確認ダイアログと再認証（src/lib/reauth.ts）が担う。
+ */
+export type DatabaseOperation = "read-only" | "data-write" | "schema-write";
 
 /**
- * 呼び出し側の操作に必要な最小モードを渡し、許可リスト判定・操作モード判定を行った上で
- * 適切なロールのプールを返す。この関数を経由せずに getDataPool/getSchemaPool を直接
- * 呼ぶAPIルートを作らないこと（認可チェックの抜け漏れを防ぐため）。
+ * 許可リスト判定を行った上で、操作の種類に合ったロールのプールを返す。
+ * この関数を経由せずに getDataPool/getSchemaPool を直接呼ぶAPIルートを作らないこと
+ * （許可リスト判定の抜け漏れを防ぐため）。
  */
 export async function getPoolForOperation(
   databaseName: string,
-  requiredMode: DatabaseMode,
+  operation: DatabaseOperation,
 ): Promise<Pool> {
   const entry = await getDatabaseEntry(databaseName);
   if (!entry) {
     throw new DatabaseNotAllowedError(databaseName);
   }
-  if (!modeAtLeast(entry.mode, requiredMode)) {
-    throw new ModeNotAllowedError(databaseName, requiredMode);
-  }
-  return requiredMode === "schema-write" ? getSchemaPool() : getDataPool();
+  return operation === "schema-write" ? getSchemaPool() : getDataPool();
 }
 
 async function querySchemaNames(pool: Pool): Promise<string[]> {
