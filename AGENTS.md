@@ -81,9 +81,16 @@ MySQL/MariaDBはGRANT文のDB名を「パターン」として扱い、付与す
 そのため自動登録は**管理ロールが設定されている環境でだけ動く**（未設定の本番VPSでは従来どおり
 「既存DBを登録」からの手動登録になる）。LIKE の `_` はワイルドカードなのでエスケープする。
 
-自動登録された行を消しても次の描画で戻るため、設定画面の削除ボタンは自動登録の対象外のDB
-（`wordpress` 等）にだけ出す。**画面表示用の表示名（`ManagedDatabase.label`）は #97 で廃止した**——
-DB名をそのまま表示する。表示名を復活させる変更はこの決定を覆すことになるので、Issueで相談する。
+**`app_` のDBは「削除」しても行を消さない。** 消すと次の描画で自動登録が戻してしまうため、
+`deleteDatabaseEntry()`（`src/lib/config.ts`）は `ManagedDatabase.excludedAt` に日時を入れて
+「除外中」にする。除外中の行は `getDatabasesConfig()`・`getDatabaseEntry()` から外れる
+（＝許可リストに載らない）が、`listAllManagedDatabaseNames()` には出るので自動登録の対象からも外れる。
+戻すときは「既存DBを登録」から選び直すと `createDatabaseEntry()` が除外を解除する。
+**除外しても `db_console_data` へ付与済みのGRANTは残る**（REVOKEの経路はこのアプリに無い）。
+アプリからは触れなくなるが、権限まで剥がしたいときはMariaDB側の手作業になる。
+
+**画面表示用の表示名（`ManagedDatabase.label`）は #97 で廃止した**——DB名をそのまま表示する。
+表示名を復活させる変更はこの決定を覆すことになるので、Issueで相談する。
 
 ## アプリ名・アイコン
 

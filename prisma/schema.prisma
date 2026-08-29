@@ -146,9 +146,13 @@ enum DatabaseMode {
 // GRANT まで行うため、手作業なしでこの表に載る（#97）。
 // 画面表示用の日本語名（label）は #97 で廃止し、DB名をそのまま表示する。
 model ManagedDatabase {
-  id        String       @id @default(cuid())
-  name      String       @unique // 実際のMariaDB上のスキーマ名
-  mode      DatabaseMode
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  id   String       @id @default(cuid())
+  name String       @unique // 実際のMariaDB上のスキーマ名
+  mode DatabaseMode
+  // 管理対象から外した日時。app_ で始まるDBは削除しても自動登録で戻ってしまうため、
+  // 行を消さずにここへ日時を入れて「除外中」として残す（#97）。
+  // 除外中の行は許可リストから外れ、自動登録の対象にもならない。
+  excludedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 }

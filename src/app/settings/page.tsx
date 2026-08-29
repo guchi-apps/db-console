@@ -3,7 +3,7 @@ import Link from "next/link";
 import { APP_VERSION } from "@/lib/app-version";
 import { MANAGED_NAME_PREFIX, getDatabasesConfig } from "@/lib/config";
 import { isAdminRoleConfigured } from "@/lib/admin-db";
-import { isAutoRegistrableDatabase, syncManagedAppDatabases } from "@/lib/managed-db-sync";
+import { syncManagedAppDatabases } from "@/lib/managed-db-sync";
 import { requireSessionForPage } from "@/lib/session";
 import { listRegistrableDatabaseNames } from "@/lib/target-db";
 import { ChangelogDialog } from "@/components/changelog-dialog";
@@ -59,6 +59,7 @@ export default async function SettingsPage({
           「{MANAGED_NAME_PREFIX}」で始まるDBは、この画面を開いた時点で権限付与まで含めて自動的に
           管理対象へ登録されます（新規作成もこの画面から行えます）。それ以外の既存DBは、MariaDB側で
           db_console_data / db_console_schema へGRANT済みのものだけを「既存DBを登録」から追加できます。
+          削除したDBは自動登録の対象から外れ、戻したいときは「既存DBを登録」から登録し直せます。
         </p>
       </div>
 
@@ -99,13 +100,10 @@ export default async function SettingsPage({
                 >
                   保存
                 </button>
-                {/* 自動登録の対象は削除しても画面を開き直すと戻るため、ボタンを出さない（#97）。 */}
-                {!(adminConfigured && isAutoRegistrableDatabase(entry.name)) && (
-                  <DeleteManagedDatabaseButton
-                    action={deleteManagedDatabaseAction}
-                    name={entry.name}
-                  />
-                )}
+                <DeleteManagedDatabaseButton
+                  action={deleteManagedDatabaseAction}
+                  name={entry.name}
+                />
               </div>
             </div>
           </li>

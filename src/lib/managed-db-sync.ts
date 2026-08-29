@@ -1,8 +1,8 @@
 import { writeAuditLog } from "@/lib/audit";
 import {
   createDatabaseEntry,
-  getDatabasesConfig,
   isManagedName,
+  listAllManagedDatabaseNames,
   type DatabaseEntry,
   type DatabaseMode,
 } from "@/lib/config";
@@ -42,6 +42,9 @@ export function isAutoRegistrableDatabase(name: string): boolean {
  * MariaDB上の app_ で始まるDBのうち未登録のものを、GRANT したうえで管理対象へ登録する。
  * ページの描画から呼ぶため、失敗しても例外を投げず、登録できたぶんだけ反映する。
  * 未登録のDBが無ければ書き込みは一切発生しない。
+ *
+ * 設定画面から管理対象を外したDBは「除外中」の行として残るため、ここでは登録し直さない
+ * （listAllManagedDatabaseNames() が除外中のものも返す）。
  */
 export async function syncManagedAppDatabases(userId: string): Promise<DatabaseEntry[]> {
   if (!isAdminRoleConfigured()) {
@@ -59,7 +62,7 @@ export async function syncManagedAppDatabases(userId: string): Promise<DatabaseE
     return [];
   }
 
-  const registered = new Set((await getDatabasesConfig()).map((entry) => entry.name));
+  const registered = new Set(await listAllManagedDatabaseNames());
   const added: DatabaseEntry[] = [];
 
   for (const name of candidates) {
