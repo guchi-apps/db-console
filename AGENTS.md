@@ -39,6 +39,35 @@ This version has breaking changes — APIs, conventions, and file structure may 
 `SHOW VIEW` はローカルの `scripts/setup-db.sh` では両ロールへ付与済み。**本番VPSのロールには
 付いていない**ため、本番でビュー定義を表示するにはGRANTの追加が要る（#86 から切り出した手作業Issue）。
 
+### SQL実行画面で通すSQL（#85）
+
+種別は `classifyStatement()`（`src/lib/sql-guard.ts`）が先頭キーワードから決め、`OTHER` は
+`assertSupportedQueryType()` が拒否する。DML/DDLに加えて `SHOW` / `DESCRIBE` / `EXPLAIN` の
+読み取り専用SQLを通す。この3種別は `read-only` モードのDBでも実行でき、プールは `getDataPool()`。
+
+**`SHOW` は許可リストで判定する（拒否リストにしない）。** 2語目が
+`CREATE`・`COLUMNS`・`FIELDS`・`INDEX`・`INDEXES`・`KEYS`・`TABLE`(STATUS)・`TABLES`・`TRIGGERS`、
+または `FULL` + `COLUMNS`/`FIELDS`/`TABLES` のときだけ通す。`SHOW GRANTS`・`SHOW PROCESSLIST`・
+`SHOW VARIABLES`・`SHOW DATABASES` などサーバー全体の情報を返す文を通さないためで、拒否リストに
+すると将来のSHOW文が黙って通る。**`SHOW FULL PROCESSLIST` を落とすために3語目まで見ている**ので、
+`FULL` の判定を2語目だけに戻さないこと。
+
+**`EXPLAIN` / `DESCRIBE` の直後が `ANALYZE`・`FOR`・`INSERT`・`UPDATE`・`DELETE`・`REPLACE` の
+ときは通さない。** MariaDBの `ANALYZE` 系は対象の文を実際に実行するため読み取り専用ではなく、
+`EXPLAIN FOR CONNECTION` は他セッションを覗く。`EXPLAIN FORMAT=JSON SELECT ...` は通る。
+
+**ビューを対象にした `SHOW CREATE VIEW` / `SHOW CREATE TABLE` は、本番では必ず失敗する。**
+本番VPSのロールに `SHOW VIEW` が無く `SHOW VIEW command denied` になる（ローカルは
+`scripts/setup-db.sh` が付与済みのため再現しない。#86 から切り出した手作業Issue待ち）。
+手打ちで失敗するだけなので許可対象からは外していないが、アプリ自身がビュー定義を読むときは
+従来どおり `information_schema.views.view_definition` を使う。
+
+**`SHOW GRANTS` を落としているのは許可リストだけ。** `assertNoForbiddenSql()` の `/\bGRANT\b/i` は
+`GRANTS` に一致しない（`\b` が `S` の手前で成立しない）ため、許可リストを拒否リストへ変えると
+`SHOW GRANTS` が通ってしまう。
+
+SQL実行は実行履歴（`SqlHistory`）と監査ログ（`AuditLog` の `SQL_EXECUTE`）の両方へ記録する。
+
 ### DBの作成とDBユーザーの管理（#91）
 
 接続ロールは3つあり、**用途ごとにプールを分けている**。強い権限を持つ管理ロールは
@@ -162,6 +191,18 @@ npm run build
 **`db:migrate:deploy` の npm script は無い**（共有ワークフローが `--if-present` で呼ぶため落ちないが、
 マイグレーションは実行されない）。マイグレーションが要る変更では、`npx prisma migrate deploy` を
 明示的に使う。
+
+**手書きしたマイグレーションが `schema.prisma` と一致しているかはCIでは検出できない**（CIは
+`prisma migrate deploy` で適用するだけ）。ENUMの値を1つ書き漏らしても lint・型チェック・テスト・
+ビルドはすべて通り、本番でだけ `Data truncated for column ...` で落ちる。空のDBを1つ用意して
+次の2つを流し、**No difference detected**（終了コード0）を確認する。**Prisma 7 の `migrate diff` に
+`--shadow-database-url` は無い**（`--from-migrations` も使わない。設定は `prisma.config.ts` から読む）。
+
+```bash
+export DATABASE_URL="mysql://<user>:<pass>@127.0.0.1:3306/<空のDB>"
+npx prisma migrate deploy
+npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
+```
 
 `prisma.config.ts` は DATABASE_URL が未設定のとき、接続できないプレースホルダーへ倒す。
 **これが無いと `npm ci` の postinstall（`prisma generate`）ごと落ちる。** 詳細はファイル内のコメントを参照。
