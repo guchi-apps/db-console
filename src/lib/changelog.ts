@@ -35,6 +35,13 @@ export type ChangelogEntry = {
  */
 export const APP_CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.0.3",
+    date: "2026-09-06",
+    changes: [
+      "（変更内容を追記してください）",
+    ],
+  },
+  {
     version: "2.0.2",
     date: "2026-09-05",
     changes: [
