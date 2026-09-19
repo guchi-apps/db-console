@@ -4,7 +4,13 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
 import { requireUserId } from "@/lib/session";
-import { getTableColumns, insertRow, updateRow, deleteRows } from "@/lib/introspection";
+import {
+  getTableColumns,
+  getRowByPrimaryKey,
+  insertRow,
+  updateRow,
+  deleteRows,
+} from "@/lib/introspection";
 import { buildRowDataFromForm } from "@/lib/row-form";
 import { writeAuditLog } from "@/lib/audit";
 
@@ -65,18 +71,26 @@ export async function updateRowAction(formData: FormData): Promise<void> {
 
   try {
     const columns = await getTableColumns(db, table);
-    const data = buildRowDataFromForm(formData, columns);
-    const result = await updateRow(db, table, pkValues, data);
-    await writeAuditLog({
-      userId,
-      action: "ROW_UPDATE",
-      databaseName: db,
-      tableName: table,
-      objectName: JSON.stringify(pkValues),
-      afterData: data,
-      affectedRows: result.affectedRows,
-      status: "SUCCESS",
-    });
+    // 触っていないカラムまで書き戻さないよう、現在の行と比べて差分のあるものだけを更新する。
+    const currentRow = await getRowByPrimaryKey(db, table, pkValues);
+    if (!currentRow) {
+      throw new Error("対象のレコードが見つかりません");
+    }
+    const data = buildRowDataFromForm(formData, columns, currentRow);
+    // 変更が無ければ更新も監査ログも残さず、一覧へ戻る（redirect は try の外で行う）。
+    if (Object.keys(data).length > 0) {
+      const result = await updateRow(db, table, pkValues, data);
+      await writeAuditLog({
+        userId,
+        action: "ROW_UPDATE",
+        databaseName: db,
+        tableName: table,
+        objectName: JSON.stringify(pkValues),
+        afterData: data,
+        affectedRows: result.affectedRows,
+        status: "SUCCESS",
+      });
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "更新に失敗しました";
     await writeAuditLog({

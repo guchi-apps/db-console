@@ -20,6 +20,19 @@ This version has breaking changes — APIs, conventions, and file structure may 
 識別子のエスケープ・SQLガード）に触れる変更は、影響がこのアプリの中で閉じない。テストの追加なしに
 振る舞いを変えないこと。
 
+### 日付・日時は文字列のまま扱う（#131）
+
+管理対象DBへのプール（`createTargetPool()`）は `dateStrings: true` で、DATE / DATETIME / TIMESTAMP は
+`Date` ではなくDBが返した文字列（`YYYY-MM-DD HH:MM:SS`）のまま届く。**`Date` を経由しないこと。**
+既定だとmysql2がプロセスのTZで `Date` にするため、TZがUTC以外のサーバーでは `toISOString()` で
+DATETIMEが9時間戻り・DATEが前日になり、それを書き戻すと他アプリのデータが壊れる。
+フォームとの変換は `src/lib/row-form.ts` が区切り文字（`T`/空白）を変えるだけで行う。
+
+**レコードのUPDATEは、現在の行と比べて差分のあるカラムだけを送る**（`buildRowDataFromForm()` の
+`currentRow`）。全カラムを書き戻すと、フォームで表せない値（`0000-00-00` など）や、ブラウザが省く秒を、触っていない
+カラムまで変えてしまう。副作用として、`ON UPDATE CURRENT_TIMESTAMP` のカラムは他のカラムを直したときに
+DB側の規則どおり更新される。
+
 ### テーブルとビュー（VIEW）
 
 一覧・レコード閲覧はビューも対象にするが、**ビューは閲覧のみ**（#86）。実在確認の関数を
