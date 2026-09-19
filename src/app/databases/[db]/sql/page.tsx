@@ -41,6 +41,7 @@ export default async function SqlPage({ params }: { params: Promise<{ db: string
           などの読み取り専用SQLを実行できます。GRANT/REVOKE/SET GLOBAL等の禁止SQL、
           DROP/TRUNCATEを含むSQL、条件（WHERE句）のないUPDATE/DELETE、
           SHOW GRANTS・SHOW PROCESSLIST・SHOW VARIABLESなどサーバー全体の情報を返すSQLは実行できません。
+          開いているDB以外を指すSQL（`他のDB名.テーブル名` など）も実行できません。
           CREATE TABLE / ALTER TABLE は構造変更のため、実行前に確認と本人確認を求めます。
           結果は先頭 {MAX_RESULT_ROWS} 件までを表示し、それを超える分は読み込まずに打ち切ります。
         </p>

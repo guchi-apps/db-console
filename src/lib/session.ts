@@ -7,6 +7,11 @@ import { db } from "@/lib/db";
 
 const SESSION_MAX_AGE_MS = 8 * 60 * 60 * 1000; // 8時間（issue #1の推奨値）
 
+/** ログイン（`loginAt`）から8時間の絶対タイムアウトを過ぎているか。 */
+export function isSessionExpired(loginAt: Date, now: number = Date.now()): boolean {
+  return now - loginAt.getTime() > SESSION_MAX_AGE_MS;
+}
+
 export type Session = {
   user: {
     id: string;
@@ -34,7 +39,7 @@ export async function getSession(): Promise<Session | null> {
   // /auth/callback を経由していない（＝db-console側の記録がない）セッションは未認証扱い。
   if (!appSession) return null;
   // 8時間の絶対タイムアウト（issue #1の推奨値）。
-  if (Date.now() - appSession.loginAt.getTime() > SESSION_MAX_AGE_MS) return null;
+  if (isSessionExpired(appSession.loginAt)) return null;
 
   return {
     user: {

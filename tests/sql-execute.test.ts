@@ -1,9 +1,28 @@
 import { EventEmitter } from "node:events";
 
 import type { FieldPacket } from "mysql2";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { collectQueryResult, type QueryEmitter } from "@/lib/sql-execute";
+const query = vi.fn();
+const release = vi.fn();
+const destroy = vi.fn();
+const emitterQuery = vi.fn();
+
+vi.mock("@/lib/config", () => ({
+  FORBIDDEN_DATABASE_NAMES: new Set(["mysql", "information_schema", "performance_schema", "sys"]),
+}));
+vi.mock("@/lib/target-db", () => ({
+  getPoolForOperation: vi.fn(async () => ({
+    getConnection: async () => ({
+      query,
+      connection: { query: emitterQuery },
+      release,
+      destroy,
+    }),
+  })),
+}));
+
+import { collectQueryResult, executeSql, type QueryEmitter } from "@/lib/sql-execute";
 
 const fields = [{ name: "id" }] as FieldPacket[];
 
@@ -100,5 +119,76 @@ describe("collectQueryResult", () => {
     query.emit("error", new Error("SELECT command denied"));
 
     await expect(promise).rejects.toThrow("SELECT command denied");
+  });
+});
+
+// ロールから見えるDB。app_b は許可リスト外（除外中）だが GRANT は残っている想定。
+const SCHEMATA = [
+  { schema_name: "information_schema" },
+  { schema_name: "app_a" },
+  { schema_name: "app_b" },
+];
+
+/** `connection.connection.query(sql)` が返すコールバック版クエリを模す。 */
+function createRowsEmitter(rows: Record<string, unknown>[], fieldNames: string[]) {
+  const emitter = new EventEmitter() as QueryEmitter;
+  queueMicrotask(() => {
+    emitter.emit(
+      "fields",
+      fieldNames.map((name) => ({ name })) as FieldPacket[],
+    );
+    for (const row of rows) emitter.emit("result", row);
+    emitter.emit("end");
+  });
+  return emitter;
+}
+
+beforeEach(() => {
+  query.mockReset();
+  release.mockReset();
+  destroy.mockReset();
+  emitterQuery.mockReset();
+  query.mockImplementation(async (sql: string) => {
+    if (sql.includes("information_schema.schemata")) return [SCHEMATA, []];
+    if (sql.startsWith("USE ")) return [{ affectedRows: 0 }, []];
+    return [[], []];
+  });
+  emitterQuery.mockImplementation(() => createRowsEmitter([{ id: 1 }], ["id"]));
+});
+
+describe("executeSql（#134）", () => {
+  it("別のDBを完全修飾名で指すSQLは、USE もSQL本体も発行せずに拒否する", async () => {
+    await expect(executeSql("app_a", "SELECT * FROM app_b.users")).rejects.toThrow(/app_b/);
+
+    const issued = query.mock.calls.map(([sql]) => sql as string);
+    expect(issued).toHaveLength(1);
+    expect(issued[0]).toContain("information_schema.schemata");
+    expect(emitterQuery).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it("DDLでも別のDBを指していれば拒否する", async () => {
+    await expect(executeSql("app_a", "ALTER TABLE app_b.t ADD COLUMN c INT")).rejects.toThrow(
+      /app_b/,
+    );
+    expect(query.mock.calls.some(([sql]) => String(sql).startsWith("USE "))).toBe(false);
+    expect(emitterQuery).not.toHaveBeenCalled();
+  });
+
+  it("開いているDBだけを指すSQLは、これまでどおり USE してから実行する", async () => {
+    const result = await executeSql("app_a", "SELECT * FROM app_a.users");
+
+    const issued = query.mock.calls.map(([sql]) => sql as string);
+    expect(issued[1]).toBe("USE `app_a`");
+    expect(emitterQuery).toHaveBeenCalledWith("SELECT * FROM app_a.users");
+    expect(result.rows).toEqual([{ id: 1 }]);
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(destroy).not.toHaveBeenCalled();
+  });
+
+  it("information_schema の参照は引き続き通す", async () => {
+    await expect(
+      executeSql("app_a", "SELECT * FROM information_schema.tables"),
+    ).resolves.toBeDefined();
   });
 });

@@ -1,14 +1,136 @@
 import { describe, expect, it } from "vitest";
 import {
+  CrossDatabaseAccessError,
+  assertNoCrossDatabaseAccess,
   assertNoDropOrTruncate,
+  assertNoExecutableComments,
   assertNoForbiddenSql,
   assertSingleStatement,
   assertSupportedQueryType,
   assertWhereClauseForMutation,
   classifyStatement,
+  extractIdentifiers,
   isSchemaChangeSql,
+  stripStringsAndComments,
   validateSqlForExecution,
 } from "@/lib/sql-guard";
+
+describe("実行可能コメントと通常コメント（#137）", () => {
+  // MariaDBは /*! ... */ と /*M! ... */ の中身をSQLとして実行する。ガードがコメントとして消すと
+  // 「ガードが見る文」と「実際に実行される文」が食い違う。
+  describe("stripStringsAndComments", () => {
+    it.each([
+      ["ALTER TABLE t /*!DROP COLUMN c*/", /\bDROP\s+COLUMN\b/],
+      ["ALTER TABLE t /*M!DROP COLUMN c*/", /\bDROP\s+COLUMN\b/],
+      ["ALTER TABLE t /*m!DROP COLUMN c*/", /\bDROP\s+COLUMN\b/],
+      ["ALTER TABLE t /*!50100 DROP COLUMN c */", /\bDROP\s+COLUMN\b/],
+      ["ALTER TABLE t /*!50100DROP COLUMN c*/", /\bDROP\s+COLUMN\b/],
+      ["ALTER TABLE t /*M!100100 DROP COLUMN c*/", /\bDROP\s+COLUMN\b/],
+      ["ALTER TABLE t /*! /*! DROP COLUMN c */ */", /\bDROP\s+COLUMN\b/],
+    ])("実行可能コメントの中身を残す: %s", (sql, expected) => {
+      expect(stripStringsAndComments(sql)).toMatch(expected);
+    });
+
+    it("実行可能コメントを閉じたあとの通常のSQLも読み進める", () => {
+      expect(stripStringsAndComments("SELECT /*!1*/ 2 FROM t")).toMatch(/SELECT\s+1?\s*2\s+FROM t/);
+    });
+
+    it("実行可能コメントの中の文字列リテラルは空白に置き換える", () => {
+      const stripped = stripStringsAndComments("SELECT /*! 'DROP */ ' */ 1");
+      expect(stripped).not.toMatch(/DROP/);
+      expect(stripped).toMatch(/1$/);
+    });
+
+    it("通常のコメントは中身ごと消す（感嘆符が無いので実行されない）", () => {
+      expect(stripStringsAndComments("SELECT 1 /* DROP TABLE t */")).not.toMatch(/DROP/);
+      expect(stripStringsAndComments("SELECT 1 /*+ DROP */")).not.toMatch(/DROP/);
+    });
+
+    it("通常のコメントの中に /*! があっても実行可能コメントとして扱わない", () => {
+      expect(stripStringsAndComments("SELECT 1 /* /*! DROP TABLE t */")).not.toMatch(/DROP/);
+    });
+
+    it("通常のコメントは語の区切りとして空白を残す（語が繋がらない）", () => {
+      expect(stripStringsAndComments("ALTER TABLE t DROP/**/COLUMN c")).toMatch(
+        /\bDROP\s+COLUMN\b/,
+      );
+      expect(stripStringsAndComments("SELECT 1 INTO/**/OUTFILE '/tmp/x'")).toMatch(
+        /\bINTO\s+OUTFILE\b/,
+      );
+    });
+
+    it("閉じていない実行可能コメントでも中身を残す", () => {
+      expect(stripStringsAndComments("SELECT 1 /*! DROP")).toMatch(/\bDROP\b/);
+    });
+  });
+
+  describe("assertNoDropOrTruncate", () => {
+    it.each([
+      "ALTER TABLE t /*!DROP COLUMN c*/",
+      "ALTER TABLE t /*M!DROP COLUMN c*/",
+      "ALTER TABLE t /*!50100 DROP COLUMN c */",
+      "/*!DROP TABLE t*/",
+      "/*!TRUNCATE TABLE t*/",
+      "/*M!TRUNCATE TABLE t*/",
+      "ALTER TABLE t DROP/**/COLUMN c",
+      "ALTER TABLE t /*!DROP*//**/COLUMN c",
+    ])("実行可能コメントや区切りコメントに隠したDROP/TRUNCATEを拒否する: %s", (sql) => {
+      expect(() => assertNoDropOrTruncate(sql)).toThrow();
+    });
+
+    it("コメントの中にあるだけのDROPは拒否しない", () => {
+      expect(() => assertNoDropOrTruncate("SELECT 1 /* DROP TABLE t */")).not.toThrow();
+      expect(() => assertNoDropOrTruncate("SELECT 1 /* /*! DROP */")).not.toThrow();
+    });
+  });
+
+  describe("assertNoForbiddenSql", () => {
+    it.each([
+      "SELECT * FROM t /*!INTO OUTFILE '/tmp/x'*/",
+      "SELECT * FROM t /*M!INTO OUTFILE '/tmp/x'*/",
+      "SELECT * FROM t INTO/**/OUTFILE '/tmp/x'",
+      "/*!GRANT ALL ON *.* TO 'x'@'%'*/",
+      "/*!50100 KILL 1 */",
+      "SELECT 1 /*! ; SHUTDOWN */",
+    ])("実行可能コメントや区切りコメントに隠した禁止SQLを拒否する: %s", (sql) => {
+      expect(() => assertNoForbiddenSql(sql)).toThrow();
+    });
+
+    it("コメントの中にあるだけの禁止ワードは拒否しない", () => {
+      expect(() => assertNoForbiddenSql("SELECT 1 /* GRANT */")).not.toThrow();
+    });
+  });
+
+  describe("assertSingleStatement", () => {
+    it("実行可能コメントに隠した2文目を拒否する", () => {
+      expect(() => assertSingleStatement("SELECT 1 /*!; DROP TABLE t*/")).toThrow();
+    });
+  });
+
+  describe("validateSqlForExecution（統合）", () => {
+    it.each([
+      "ALTER TABLE t /*!DROP COLUMN c*/",
+      "ALTER TABLE t DROP/**/COLUMN c",
+      "/*!DROP TABLE t*/",
+      "SELECT * FROM t /*!INTO OUTFILE '/tmp/x'*/",
+      "SELECT 1 /*!; DROP TABLE t*/",
+    ])("拒否する: %s", (sql) => {
+      expect(() => validateSqlForExecution(sql)).toThrow();
+    });
+
+    it("実行可能コメントの中のWHERE句は有効な条件として扱う", () => {
+      expect(validateSqlForExecution("DELETE FROM t /*!WHERE id = 1*/")).toBe("DELETE");
+    });
+
+    it("コメントの中にしかないWHERE句では条件なしDELETEを通さない", () => {
+      expect(() => validateSqlForExecution("DELETE FROM t /* WHERE id = 1 */")).toThrow();
+    });
+
+    it("mysqldump形式の無害な実行可能コメントを含むSELECTは通す", () => {
+      expect(validateSqlForExecution("SELECT /*!40001 SQL_NO_CACHE */ * FROM t")).toBe("SELECT");
+    });
+  });
+});
 
 describe("classifyStatement", () => {
   it.each([
@@ -260,5 +382,161 @@ describe("isSchemaChangeSql", () => {
     "",
   ])("構造を変えないSQLは対象外にする: %s", (sql) => {
     expect(isSchemaChangeSql(sql)).toBe(false);
+  });
+});
+
+describe("assertNoCrossDatabaseAccess（#134）", () => {
+  // app_a の画面を開いている。app_b は GRANT 済みだが許可リスト外（除外中を含む）のDB。
+  const existing = ["app_a", "app_b", "Wordpress"];
+  const run = (sql: string, queryType: Parameters<typeof assertNoCrossDatabaseAccess>[1] = "SELECT") =>
+    assertNoCrossDatabaseAccess(sql, queryType, "app_a", existing);
+
+  it.each([
+    "SELECT * FROM app_b.users",
+    "SELECT * FROM `app_b`.`users`",
+    "SELECT * FROM app_b . users",
+    "SELECT * FROM app_b/* x */./* y */users",
+    "SELECT * FROM APP_B.users",
+    'SELECT * FROM "app_b".users',
+    "SELECT * FROM users u JOIN app_b.orders o ON o.user_id = u.id",
+    "SELECT (SELECT COUNT(*) FROM app_b.users) AS n",
+    "SELECT app_b.fn(1)",
+    "INSERT INTO users (name) SELECT name FROM app_b.users",
+    "UPDATE app_b.users SET a = 1 WHERE id = 1",
+    "DELETE FROM app_b.users WHERE id = 1",
+    "CREATE TABLE app_b.t (id INT)",
+    "CREATE TABLE t LIKE app_b.users",
+    "ALTER TABLE app_b.t ADD COLUMN c INT",
+    "ALTER TABLE t RENAME TO app_b.t",
+    "DESCRIBE app_b.users",
+    "EXPLAIN SELECT * FROM app_b.users",
+    "SELECT * FROM wordpress.wp_posts",
+    // `--` の直後が空白でなければコメントではなく、`FROM app_b.t` はそのまま実行される
+    "SELECT 1--1 FROM app_b.t",
+    "SELECT 1\n--1 FROM app_b.t",
+  ])("別のDBを名前で指すSQLを拒否する: %s", (sql) => {
+    expect(() => run(sql)).toThrow(CrossDatabaseAccessError);
+  });
+
+  it.each([
+    "SHOW TABLES FROM app_b",
+    "SHOW TABLES IN app_b",
+    "SHOW FULL TABLES FROM `app_b`",
+    "SHOW COLUMNS FROM users FROM app_b",
+    "SHOW INDEX FROM users IN app_b",
+    "SHOW TABLE STATUS FROM app_b",
+    "SHOW CREATE DATABASE app_b",
+    "SHOW CREATE TABLE app_b.users",
+    "SHOW TRIGGERS FROM app_b",
+  ])("SHOW で別のDBを指定するSQLを拒否する: %s", (sql) => {
+    expect(() => run(sql, "SHOW")).toThrow(CrossDatabaseAccessError);
+  });
+
+  it.each([
+    "SELECT * FROM users",
+    "SELECT * FROM app_a.users",
+    "SELECT * FROM `app_a`.`users`",
+    "SELECT u.id FROM users u",
+    // 文字列リテラル・コメントの中は識別子ではない
+    "SELECT * FROM users WHERE name = 'app_b.users'",
+    "SELECT * FROM users WHERE name = \"app_b\"",
+    "SELECT * FROM users -- app_b.users",
+    "SELECT * FROM users # app_b.users",
+    "SELECT * FROM users /* app_b.users */",
+    // 別のDB名を列名・テーブル名として使うだけ（`.` の直前ではない）
+    "SELECT app_b FROM users",
+    "SELECT u.app_b FROM users u",
+    // 接頭辞が同じだけの別名
+    "SELECT * FROM app_b2.users",
+    "SELECT * FROM xapp_b.users",
+    // システムDBは呼び出し側で existingDatabaseNames から外す前提（ここでは通る）
+    "SELECT * FROM information_schema.tables",
+  ])("開いているDBだけを指すSQLは通す: %s", (sql) => {
+    expect(() => run(sql)).not.toThrow();
+  });
+
+  it.each([
+    "SHOW TABLES",
+    "SHOW TABLES FROM app_a",
+    "SHOW COLUMNS FROM users",
+    "SHOW CREATE TABLE users",
+    "SHOW TABLES LIKE 'app_b'",
+    'SHOW TABLES LIKE "app_b"',
+    "SHOW TABLES FROM information_schema",
+  ])("開いているDBだけを指すSHOWは通す: %s", (sql) => {
+    expect(() => run(sql, "SHOW")).not.toThrow();
+  });
+
+  it("SHOW 以外では、`.` を伴わない別DB名の識別子は拒否しない", () => {
+    expect(() => run("SELECT * FROM app_b")).not.toThrow();
+  });
+
+  it("他にDBが無ければ何も拒否しない", () => {
+    expect(() =>
+      assertNoCrossDatabaseAccess("SELECT * FROM app_b.t", "SELECT", "app_a", ["app_a"]),
+    ).not.toThrow();
+  });
+
+  it("エラーメッセージに参照先のDB名を含める", () => {
+    expect(() => run("SELECT * FROM app_b.users")).toThrow(/app_b/);
+  });
+
+  it("バッククォート内の連続バッククォートを1文字として読む", () => {
+    expect(() =>
+      assertNoCrossDatabaseAccess("SELECT * FROM `a``b`.t", "SELECT", "app_a", ["a`b"]),
+    ).toThrow(CrossDatabaseAccessError);
+  });
+});
+
+describe("extractIdentifiers", () => {
+  it("引用符なし・バッククォート・二重引用符の識別子と、直後のドットを取り出す", () => {
+    expect(extractIdentifiers("SELECT a.b, `c d`.`e` FROM \"f\"")).toEqual([
+      { name: "SELECT", quote: "none", followedByDot: false },
+      { name: "a", quote: "none", followedByDot: true },
+      { name: "b", quote: "none", followedByDot: false },
+      { name: "c d", quote: "backtick", followedByDot: true },
+      { name: "e", quote: "backtick", followedByDot: false },
+      { name: "FROM", quote: "none", followedByDot: false },
+      { name: "f", quote: "double", followedByDot: false },
+    ]);
+  });
+
+  it("文字列リテラルとコメントは識別子に含めない", () => {
+    expect(extractIdentifiers("SELECT 'x.y' /* z.w */ -- q.r\n")).toEqual([
+      { name: "SELECT", quote: "none", followedByDot: false },
+    ]);
+  });
+});
+
+describe("assertNoExecutableComments（#134）", () => {
+  it.each([
+    "SELECT * FROM /*! app_b.users */ t",
+    "SELECT 1 /*!50000 + 1 */",
+    "SELECT 1 /*M! + 1 */",
+  ])("実行可能コメントを拒否する: %s", (sql) => {
+    expect(() => assertNoExecutableComments(sql)).toThrow();
+    expect(() => validateSqlForExecution(sql)).toThrow();
+  });
+
+  it.each([
+    "SELECT 1 /* 普通のコメント */",
+    "SELECT 1 /*+ MAX_EXECUTION_TIME(1000) */",
+    "SELECT '/*! literal */'",
+    "SELECT 1 -- /*! comment",
+    "SELECT `/*!`",
+  ])("普通のコメントや文字列リテラルは通す: %s", (sql) => {
+    expect(() => assertNoExecutableComments(sql)).not.toThrow();
+  });
+});
+
+describe("stripStringsAndComments（`--` の扱い）", () => {
+  it("`--` の直後が空白なら行コメントとして落とす", () => {
+    expect(stripStringsAndComments("SELECT 1 -- INTO OUTFILE 'x'\n")).toBe("SELECT 1 \n");
+    expect(stripStringsAndComments("SELECT 1 --")).toBe("SELECT 1 ");
+  });
+
+  it("`--` の直後が空白でなければコメントではないので、続きも検査対象に残す", () => {
+    expect(stripStringsAndComments("SELECT 1--1 FROM t INTO OUTFILE 'x'")).toContain("INTO OUTFILE");
+    expect(() => assertNoForbiddenSql("SELECT 1--1 FROM t INTO OUTFILE 'x'")).toThrow();
   });
 });
