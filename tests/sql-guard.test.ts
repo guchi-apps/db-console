@@ -108,26 +108,26 @@ describe("実行可能コメントと通常コメント（#137）", () => {
   });
 
   describe("validateSqlForExecution（統合）", () => {
+    // assertNoExecutableComments（#134）が validateSqlForExecution の先頭近くで呼ばれるため、
+    // 実行可能コメントを含むSQLは、中身がDROP等の危険なSQLを含むかどうかに関わらず拒否される。
+    // 「無害な実行可能コメントは中身を見て通す」という案は、cross-database access のガード
+    // （assertNoCrossDatabaseAccess・extractIdentifiers）が実行可能コメントの中身を識別子として
+    // 読まないため採らなかった（採ると `SELECT * FROM /*! app_b.users */ t` のようなSQLで
+    // 他DBへのアクセスを見逃す）。
     it.each([
       "ALTER TABLE t /*!DROP COLUMN c*/",
       "ALTER TABLE t DROP/**/COLUMN c",
       "/*!DROP TABLE t*/",
       "SELECT * FROM t /*!INTO OUTFILE '/tmp/x'*/",
       "SELECT 1 /*!; DROP TABLE t*/",
+      "DELETE FROM t /*!WHERE id = 1*/",
+      "SELECT /*!40001 SQL_NO_CACHE */ * FROM t",
     ])("拒否する: %s", (sql) => {
       expect(() => validateSqlForExecution(sql)).toThrow();
     });
 
-    it("実行可能コメントの中のWHERE句は有効な条件として扱う", () => {
-      expect(validateSqlForExecution("DELETE FROM t /*!WHERE id = 1*/")).toBe("DELETE");
-    });
-
     it("コメントの中にしかないWHERE句では条件なしDELETEを通さない", () => {
       expect(() => validateSqlForExecution("DELETE FROM t /* WHERE id = 1 */")).toThrow();
-    });
-
-    it("mysqldump形式の無害な実行可能コメントを含むSELECTは通す", () => {
-      expect(validateSqlForExecution("SELECT /*!40001 SQL_NO_CACHE */ * FROM t")).toBe("SELECT");
     });
   });
 });
