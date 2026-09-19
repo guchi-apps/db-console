@@ -26,6 +26,10 @@ export function createTargetPool(user: string, password: string): Pool {
     maxIdle: 2,
     idleTimeout: 30_000,
     namedPlaceholders: false,
+    // DATE / DATETIME / TIMESTAMP を Date にせず、DBが返した文字列のまま扱う。既定の Date だと
+    // プロセスのTZで解釈されるため、TZがUTC以外のサーバーでは編集フォームへ出す値がずれ、
+    // そのまま書き戻すと他アプリのデータを壊す（#131）。
+    dateStrings: true,
   });
 }
 

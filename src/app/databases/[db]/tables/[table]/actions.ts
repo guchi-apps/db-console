@@ -4,7 +4,13 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
 import { requireUserId } from "@/lib/session";
-import { getTableColumns, insertRow, updateRow, deleteRows } from "@/lib/introspection";
+import {
+  getTableColumns,
+  getRowByPrimaryKey,
+  insertRow,
+  updateRow,
+  deleteRows,
+} from "@/lib/introspection";
 import { buildRowDataFromForm } from "@/lib/row-form";
 import { writeAuditLogSafely } from "@/lib/audit";
 
@@ -67,11 +73,18 @@ export async function updateRowAction(formData: FormData): Promise<void> {
   const editPath = `${listPath}/edit?pk=${encodeURIComponent(pkRaw)}`;
 
   let data: Record<string, unknown>;
-  let affectedRows: number;
+  let affectedRows: number | undefined;
   try {
     const columns = await getTableColumns(db, table);
-    data = buildRowDataFromForm(formData, columns);
-    ({ affectedRows } = await updateRow(db, table, pkValues, data));
+    // 触っていないカラムまで書き戻さないよう、現在の行と比べて差分のあるものだけを更新する。
+    const currentRow = await getRowByPrimaryKey(db, table, pkValues);
+    if (!currentRow) {
+      throw new Error("対象のレコードが見つかりません");
+    }
+    data = buildRowDataFromForm(formData, columns, currentRow);
+    if (Object.keys(data).length > 0) {
+      ({ affectedRows } = await updateRow(db, table, pkValues, data));
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "更新に失敗しました";
     await writeAuditLogSafely({
@@ -85,16 +98,19 @@ export async function updateRowAction(formData: FormData): Promise<void> {
     });
     redirect(`${editPath}&error=${encodeURIComponent(message)}`);
   }
-  await writeAuditLogSafely({
-    userId,
-    action: "ROW_UPDATE",
-    databaseName: db,
-    tableName: table,
-    objectName: JSON.stringify(pkValues),
-    afterData: data,
-    affectedRows,
-    status: "SUCCESS",
-  });
+  // 変更が無ければ更新も監査ログも残さない。
+  if (Object.keys(data).length > 0) {
+    await writeAuditLogSafely({
+      userId,
+      action: "ROW_UPDATE",
+      databaseName: db,
+      tableName: table,
+      objectName: JSON.stringify(pkValues),
+      afterData: data,
+      affectedRows,
+      status: "SUCCESS",
+    });
+  }
 
   revalidatePath(listPath);
   redirect(listPath);
