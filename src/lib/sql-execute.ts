@@ -1,4 +1,6 @@
-import type { FieldPacket, ResultSetHeader, RowDataPacket } from "mysql2";
+import type { EventEmitter } from "node:events";
+
+import type { FieldPacket, ResultSetHeader } from "mysql2";
 import type { SqlQueryType } from "@prisma/client";
 
 import { assertSafeDatabaseName, quoteIdentifier } from "@/lib/identifier";
@@ -20,12 +22,93 @@ const OPERATION_BY_QUERY_TYPE: Record<SqlQueryType, DatabaseOperation> = {
   OTHER: "schema-write", // validateSqlForExecution が先に弾くため到達しない想定
 };
 
+/**
+ * 結果として返す行数の上限。本番は `--max-old-space-size=128` で動いており、他アプリの大きい
+ * テーブルへの `SELECT *` を全件メモリに載せると落ちる（#136）。結果はサーバーアクションの
+ * 戻り値としてシリアライズされ、画面が全行を描画するため、読み込み側だけでなく表示側の
+ * 負荷を抑える意味でもこの件数で打ち切る。
+ */
+export const MAX_RESULT_ROWS = 1000;
+
 export interface SqlExecutionResult {
   queryType: SqlQueryType;
   durationMs: number;
   columns: string[];
   rows: Record<string, unknown>[];
   affectedRows: number | null;
+  /** 行数の上限で読み取りを打ち切った場合 true。`rows` は先頭 `MAX_RESULT_ROWS` 件だけになる。 */
+  truncated: boolean;
+}
+
+/**
+ * mysql2 のコールバック版クエリ（`connection.query(sql)` にコールバックを渡さずに得る、
+ * イベントを発行する Query オブジェクト）のうち、ここで使う部分だけ。
+ */
+export interface QueryEmitter extends EventEmitter {
+  on(event: "fields", listener: (fields: FieldPacket[] | undefined) => void): this;
+  on(event: "result", listener: (row: unknown) => void): this;
+  on(event: "error", listener: (error: Error) => void): this;
+  on(event: "end", listener: () => void): this;
+}
+
+export type CollectedQuery =
+  | { kind: "rows"; fields: FieldPacket[]; rows: Record<string, unknown>[]; truncated: boolean }
+  | { kind: "ok"; header: ResultSetHeader };
+
+/**
+ * クエリの結果を最大 `maxRows` 行だけ集める。上限を超える行が届いた時点で、それ以降は
+ * メモリへ載せず、`onTruncate` を呼んで打ち切る。
+ *
+ * `connection.query(sql)` にコールバックを渡す形だと mysql2 が全行を配列へ積んでしまうため、
+ * 行ごとに届く `result` イベントで受けて自分で数える。
+ * 打ち切り後もサーバーは残りの行を送り続けるので、`onTruncate` では接続を破棄する
+ * （読み残しのあるコネクションをプールへ戻してはいけない）。
+ */
+export function collectQueryResult(
+  query: QueryEmitter,
+  maxRows: number,
+  onTruncate: () => void,
+): Promise<CollectedQuery> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let fields: FieldPacket[] | undefined;
+    const rows: Record<string, unknown>[] = [];
+
+    query.on("fields", (received) => {
+      fields = received;
+    });
+    query.on("result", (payload) => {
+      if (settled) return;
+      // 行を返さない文（INSERT 等）は fields が undefined のまま、結果として OK パケットが届く。
+      if (!fields) {
+        settled = true;
+        resolve({ kind: "ok", header: payload as ResultSetHeader });
+        return;
+      }
+      if (rows.length >= maxRows) {
+        settled = true;
+        onTruncate();
+        resolve({ kind: "rows", fields, rows, truncated: true });
+        return;
+      }
+      rows.push(payload as Record<string, unknown>);
+    });
+    query.on("error", (error) => {
+      // 打ち切りで接続を壊したあとに届くエラーは、結果が確定済みなので捨てる。
+      if (settled) return;
+      settled = true;
+      reject(error);
+    });
+    query.on("end", () => {
+      if (settled) return;
+      settled = true;
+      resolve(
+        fields
+          ? { kind: "rows", fields, rows, truncated: false }
+          : { kind: "ok", header: { affectedRows: 0 } as ResultSetHeader },
+      );
+    });
+  });
 }
 
 /**
@@ -43,26 +126,29 @@ export async function executeSql(
   const pool = await getPoolForOperation(databaseName, OPERATION_BY_QUERY_TYPE[queryType]);
 
   const connection = await pool.getConnection();
+  let discard = false;
   try {
     await connection.query(`USE ${quoteIdentifier(databaseName)}`);
 
     const start = Date.now();
-    const [result, fields] = (await connection.query(sql)) as [
-      RowDataPacket[] | ResultSetHeader,
-      FieldPacket[],
-    ];
+    // Promise 版のラッパーは全行を配列へ積んでしまうため、内側のコールバック版で行ごとに受ける。
+    const collected = await collectQueryResult(
+      connection.connection.query(sql) as unknown as QueryEmitter,
+      MAX_RESULT_ROWS,
+      () => {
+        discard = true;
+      },
+    );
     const durationMs = Date.now() - start;
 
-    if (Array.isArray(result)) {
-      const columns = fields?.length
-        ? fields.map((f) => f.name)
-        : Object.keys(result[0] ?? {});
+    if (collected.kind === "rows") {
       return {
         queryType,
         durationMs,
-        columns,
-        rows: result as unknown as Record<string, unknown>[],
+        columns: collected.fields.map((f) => f.name),
+        rows: collected.rows,
         affectedRows: null,
+        truncated: collected.truncated,
       };
     }
 
@@ -71,9 +157,14 @@ export async function executeSql(
       durationMs,
       columns: [],
       rows: [],
-      affectedRows: result.affectedRows ?? null,
+      affectedRows: collected.header.affectedRows ?? null,
+      truncated: false,
     };
   } finally {
-    connection.release();
+    if (discard) {
+      connection.destroy();
+    } else {
+      connection.release();
+    }
   }
 }
