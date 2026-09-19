@@ -16,7 +16,7 @@ import {
 } from "@/lib/introspection";
 import { buildSqlType, KEEP_CURRENT_TYPE_KEY } from "@/lib/column-types";
 import { assertSchemaChangeReauth } from "@/lib/reauth";
-import { writeAuditLog } from "@/lib/audit";
+import { writeAuditLogSafely } from "@/lib/audit";
 
 function structurePath(db: string, table: string): string {
   return `/databases/${db}/tables/${table}/structure`;
@@ -41,17 +41,9 @@ export async function addColumnAction(formData: FormData): Promise<void> {
   try {
     const sqlType = buildSqlType(typeKey, param1, param2);
     await addColumn(db, table, { columnName, sqlType, nullable, defaultValue: defaultValue || undefined });
-    await writeAuditLog({
-      userId,
-      action: "COLUMN_ADD",
-      databaseName: db,
-      tableName: table,
-      objectName: columnName,
-      status: "SUCCESS",
-    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "カラム追加に失敗しました";
-    await writeAuditLog({
+    await writeAuditLogSafely({
       userId,
       action: "COLUMN_ADD",
       databaseName: db,
@@ -62,6 +54,15 @@ export async function addColumnAction(formData: FormData): Promise<void> {
     });
     redirect(`${path}?error=${encodeURIComponent(message)}`);
   }
+
+  await writeAuditLogSafely({
+    userId,
+    action: "COLUMN_ADD",
+    databaseName: db,
+    tableName: table,
+    objectName: columnName,
+    status: "SUCCESS",
+  });
 
   revalidatePath(path);
   redirect(path);
@@ -110,17 +111,9 @@ export async function modifyColumnAction(formData: FormData): Promise<void> {
       comment: comment || undefined,
       position,
     });
-    await writeAuditLog({
-      userId,
-      action: "COLUMN_ALTER",
-      databaseName: db,
-      tableName: table,
-      objectName: columnName,
-      status: "SUCCESS",
-    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "カラム編集に失敗しました";
-    await writeAuditLog({
+    await writeAuditLogSafely({
       userId,
       action: "COLUMN_ALTER",
       databaseName: db,
@@ -131,6 +124,15 @@ export async function modifyColumnAction(formData: FormData): Promise<void> {
     });
     redirect(`${path}?error=${encodeURIComponent(message)}`);
   }
+
+  await writeAuditLogSafely({
+    userId,
+    action: "COLUMN_ALTER",
+    databaseName: db,
+    tableName: table,
+    objectName: columnName,
+    status: "SUCCESS",
+  });
 
   revalidatePath(path);
   redirect(path);
@@ -151,17 +153,9 @@ export async function dropColumnAction(formData: FormData): Promise<void> {
 
   try {
     await dropColumn(db, table, columnName);
-    await writeAuditLog({
-      userId,
-      action: "COLUMN_DROP",
-      databaseName: db,
-      tableName: table,
-      objectName: columnName,
-      status: "SUCCESS",
-    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "カラム削除に失敗しました";
-    await writeAuditLog({
+    await writeAuditLogSafely({
       userId,
       action: "COLUMN_DROP",
       databaseName: db,
@@ -172,6 +166,15 @@ export async function dropColumnAction(formData: FormData): Promise<void> {
     });
     redirect(`${path}?error=${encodeURIComponent(message)}`);
   }
+
+  await writeAuditLogSafely({
+    userId,
+    action: "COLUMN_DROP",
+    databaseName: db,
+    tableName: table,
+    objectName: columnName,
+    status: "SUCCESS",
+  });
 
   revalidatePath(path);
   redirect(path);
@@ -199,17 +202,9 @@ export async function addIndexAction(formData: FormData): Promise<void> {
     } else {
       await addIndex(db, table, { indexName, columns, unique: kind === "unique" });
     }
-    await writeAuditLog({
-      userId,
-      action: "INDEX_ADD",
-      databaseName: db,
-      tableName: table,
-      objectName: kind === "primary" ? "PRIMARY" : indexName,
-      status: "SUCCESS",
-    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "インデックス追加に失敗しました";
-    await writeAuditLog({
+    await writeAuditLogSafely({
       userId,
       action: "INDEX_ADD",
       databaseName: db,
@@ -219,6 +214,15 @@ export async function addIndexAction(formData: FormData): Promise<void> {
     });
     redirect(`${path}?error=${encodeURIComponent(message)}`);
   }
+
+  await writeAuditLogSafely({
+    userId,
+    action: "INDEX_ADD",
+    databaseName: db,
+    tableName: table,
+    objectName: kind === "primary" ? "PRIMARY" : indexName,
+    status: "SUCCESS",
+  });
 
   revalidatePath(path);
   redirect(path);
@@ -239,17 +243,9 @@ export async function dropIndexAction(formData: FormData): Promise<void> {
 
   try {
     await dropIndex(db, table, indexName);
-    await writeAuditLog({
-      userId,
-      action: "INDEX_DROP",
-      databaseName: db,
-      tableName: table,
-      objectName: indexName,
-      status: "SUCCESS",
-    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "インデックス削除に失敗しました";
-    await writeAuditLog({
+    await writeAuditLogSafely({
       userId,
       action: "INDEX_DROP",
       databaseName: db,
@@ -260,6 +256,15 @@ export async function dropIndexAction(formData: FormData): Promise<void> {
     });
     redirect(`${path}?error=${encodeURIComponent(message)}`);
   }
+
+  await writeAuditLogSafely({
+    userId,
+    action: "INDEX_DROP",
+    databaseName: db,
+    tableName: table,
+    objectName: indexName,
+    status: "SUCCESS",
+  });
 
   revalidatePath(path);
   redirect(path);

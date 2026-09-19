@@ -99,6 +99,13 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 SQL実行は実行履歴（`SqlHistory`）と監査ログ（`AuditLog` の `SQL_EXECUTE`）の両方へ記録する。
 
+**記録は操作の結果が確定したあとに、`try` の外で書く（#135）。** 操作（SQL実行・レコード操作・DDL）だけを
+`try` で囲み、履歴・監査ログの書き込みを同じ `try` に入れない。入れると、操作が成功したあとにメタデータDBの
+書き込みが落ちたとき `catch` に入り、実行済みの操作が「失敗」として記録・表示されて再実行（二重適用）を招く。
+監査ログは `writeAuditLogSafely()`（`src/lib/audit.ts`）で書く——失敗しても `console.error` にとどめ、
+例外を投げない。実行履歴は `sql/actions.ts` の `saveSqlHistory()` が同じ扱い。失敗側の記録にも同じ関数を使う
+（記録の失敗でエラー表示・リダイレクトが漏れないようにするため）。`tests/record-failure.test.ts` が実例。
+
 ### DBの作成とDBユーザーの管理（#91）
 
 接続ロールは3つあり、**用途ごとにプールを分けている**。強い権限を持つ管理ロールは

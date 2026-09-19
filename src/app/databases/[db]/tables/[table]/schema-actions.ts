@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { requireUserId } from "@/lib/session";
 import { dropTable, renameTable, truncateTable } from "@/lib/introspection";
 import { assertSchemaChangeReauth } from "@/lib/reauth";
-import { writeAuditLog } from "@/lib/audit";
+import { writeAuditLogSafely } from "@/lib/audit";
 
 export async function renameTableAction(formData: FormData): Promise<void> {
   const userId = await requireUserId();
@@ -20,17 +20,9 @@ export async function renameTableAction(formData: FormData): Promise<void> {
 
   try {
     await renameTable(db, table, newName);
-    await writeAuditLog({
-      userId,
-      action: "TABLE_ALTER",
-      databaseName: db,
-      tableName: table,
-      objectName: newName,
-      status: "SUCCESS",
-    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "名前変更に失敗しました";
-    await writeAuditLog({
+    await writeAuditLogSafely({
       userId,
       action: "TABLE_ALTER",
       databaseName: db,
@@ -40,6 +32,15 @@ export async function renameTableAction(formData: FormData): Promise<void> {
     });
     redirect(`${structurePath}?error=${encodeURIComponent(message)}`);
   }
+
+  await writeAuditLogSafely({
+    userId,
+    action: "TABLE_ALTER",
+    databaseName: db,
+    tableName: table,
+    objectName: newName,
+    status: "SUCCESS",
+  });
 
   revalidatePath(`/databases/${db}/tables`);
   redirect(`/databases/${db}/tables/${newName}/structure`);
@@ -59,16 +60,9 @@ export async function truncateTableAction(formData: FormData): Promise<void> {
 
   try {
     await truncateTable(db, table);
-    await writeAuditLog({
-      userId,
-      action: "TABLE_TRUNCATE",
-      databaseName: db,
-      tableName: table,
-      status: "SUCCESS",
-    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "空データ化に失敗しました";
-    await writeAuditLog({
+    await writeAuditLogSafely({
       userId,
       action: "TABLE_TRUNCATE",
       databaseName: db,
@@ -78,6 +72,14 @@ export async function truncateTableAction(formData: FormData): Promise<void> {
     });
     redirect(`${dangerPath}?error=${encodeURIComponent(message)}`);
   }
+
+  await writeAuditLogSafely({
+    userId,
+    action: "TABLE_TRUNCATE",
+    databaseName: db,
+    tableName: table,
+    status: "SUCCESS",
+  });
 
   revalidatePath(`/databases/${db}/tables/${table}`);
   redirect(`/databases/${db}/tables/${table}`);
@@ -97,16 +99,9 @@ export async function dropTableAction(formData: FormData): Promise<void> {
 
   try {
     await dropTable(db, table);
-    await writeAuditLog({
-      userId,
-      action: "TABLE_DROP",
-      databaseName: db,
-      tableName: table,
-      status: "SUCCESS",
-    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "削除に失敗しました";
-    await writeAuditLog({
+    await writeAuditLogSafely({
       userId,
       action: "TABLE_DROP",
       databaseName: db,
@@ -116,6 +111,14 @@ export async function dropTableAction(formData: FormData): Promise<void> {
     });
     redirect(`${dangerPath}?error=${encodeURIComponent(message)}`);
   }
+
+  await writeAuditLogSafely({
+    userId,
+    action: "TABLE_DROP",
+    databaseName: db,
+    tableName: table,
+    status: "SUCCESS",
+  });
 
   revalidatePath(`/databases/${db}/tables`);
   redirect(`/databases/${db}/tables`);
