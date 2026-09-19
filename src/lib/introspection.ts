@@ -1,6 +1,10 @@
 import { escape as sqlEscape, type ResultSetHeader, type RowDataPacket } from "mysql2";
 
 import {
+  buildModifyColumnSql,
+  type ColumnModificationSqlInput,
+} from "@/lib/column-definition";
+import {
   assertBaseTableExists,
   assertColumnExists,
   assertSafeColumnName,
@@ -42,6 +46,9 @@ export interface ColumnInfo {
   columnKey: string;
   comment: string | null;
   ordinalPosition: number;
+  /** 文字列型のカラムの文字セット・照合順序（それ以外は null）。MODIFY で引き継ぐ（#132）。 */
+  characterSetName: string | null;
+  collationName: string | null;
 }
 
 export interface IndexInfo {
@@ -185,7 +192,8 @@ export async function getTableColumns(
             column_type AS column_type, is_nullable AS is_nullable,
             column_default AS column_default, extra AS extra,
             column_key AS column_key, column_comment AS column_comment,
-            ordinal_position AS ordinal_position
+            ordinal_position AS ordinal_position,
+            character_set_name AS character_set_name, collation_name AS collation_name
      FROM information_schema.columns
      WHERE table_schema = ? AND table_name = ?
      ORDER BY ordinal_position`,
@@ -202,6 +210,8 @@ export async function getTableColumns(
     columnKey: (row.column_key as string) ?? "",
     comment: (row.column_comment as string) || null,
     ordinalPosition: Number(row.ordinal_position),
+    characterSetName: (row.character_set_name as string) ?? null,
+    collationName: (row.collation_name as string) ?? null,
   }));
 }
 
@@ -562,15 +572,12 @@ export async function addColumn(
   await pool.query(sql);
 }
 
-export interface ColumnModificationInput {
-  sqlType: string;
-  nullable: boolean;
-  defaultValue?: string;
-  comment?: string;
-  position?: "first" | { after: string };
-}
+export type ColumnModificationInput = ColumnModificationSqlInput;
 
-/** カラムの型・NULL可否・デフォルト値・コメント・並び順をまとめて変更する（MODIFY COLUMN）。 */
+/**
+ * カラムの型・NULL可否・デフォルト値・コメント・並び順をまとめて変更する（MODIFY COLUMN）。
+ * フォームで扱わない属性（AUTO_INCREMENT 等）は現在の定義から引き継ぐ（#132。buildModifyColumnSql）。
+ */
 export async function modifyColumn(
   databaseName: string,
   tableName: string,
@@ -580,23 +587,19 @@ export async function modifyColumn(
   const pool = await getPoolForOperation(databaseName, "schema-write");
   await assertBaseTableExists(pool, databaseName, tableName);
   await assertColumnExists(pool, databaseName, tableName, columnName);
+  if (input.position && input.position !== "first") {
+    await assertColumnExists(pool, databaseName, tableName, input.position.after);
+  }
+
+  // 引き継ぐ属性はクライアントから受け取らず、実行直前にDBから読み直す。
+  const columns = await getTableColumns(databaseName, tableName);
+  const current = columns.find((c) => c.name === columnName);
+  if (!current) {
+    throw new IdentifierNotFoundError("カラム", `${tableName}.${columnName}`);
+  }
 
   const qualifiedTable = qualifyTable(databaseName, tableName);
-  const nullSql = input.nullable ? "NULL" : "NOT NULL";
-  let sql = `ALTER TABLE ${qualifiedTable} MODIFY COLUMN ${quoteColumn(columnName)} ${input.sqlType} ${nullSql}`;
-  if (input.defaultValue) {
-    sql += ` DEFAULT ${sqlEscape(input.defaultValue)}`;
-  }
-  if (input.comment) {
-    sql += ` COMMENT ${sqlEscape(input.comment)}`;
-  }
-  if (input.position === "first") {
-    sql += " FIRST";
-  } else if (input.position) {
-    await assertColumnExists(pool, databaseName, tableName, input.position.after);
-    sql += ` AFTER ${quoteColumn(input.position.after)}`;
-  }
-  await pool.query(sql);
+  await pool.query(buildModifyColumnSql(qualifiedTable, current, input));
 }
 
 /** カラムを削除する（破壊的操作。呼び出し側で再認証・対象名入力確認を行うこと）。 */

@@ -1,6 +1,8 @@
 "use server";
 
-import { writeAuditLog } from "@/lib/audit";
+import type { Prisma } from "@prisma/client";
+
+import { writeAuditLogSafely } from "@/lib/audit";
 import { requireUserId } from "@/lib/session";
 import { isReauthValid } from "@/lib/reauth";
 import { isSchemaChangeSql } from "@/lib/sql-guard";
@@ -13,6 +15,21 @@ export interface SqlActionState {
   /** 本人確認が足りずに実行しなかった場合。画面が本人確認への導線を出す（#105）。 */
   needsReauth?: boolean;
   result?: SqlExecutionResult;
+}
+
+/**
+ * 実行履歴を残す。SQLの実行が確定したあとに呼ぶため、書き込みに失敗しても例外を投げない。
+ * ここで落ちると実行済みのSQLが「失敗」に見えて再実行され、二重に適用されうる（#135）。
+ */
+async function saveSqlHistory(data: Prisma.SqlHistoryUncheckedCreateInput): Promise<void> {
+  try {
+    await prismaDb.sqlHistory.create({ data });
+  } catch (error) {
+    console.error(
+      `SQL実行履歴の書き込みに失敗しました (${data.databaseName} / ${data.status})`,
+      error,
+    );
+  }
 }
 
 export async function executeSqlAction(
@@ -40,43 +57,24 @@ export async function executeSqlAction(
     };
   }
 
+  // try で囲むのはSQLの実行だけ。履歴・監査ログはSQLの成否が確定したあとに独立して書き、
+  // 記録の失敗で実行結果の成否を変えない（#135）。
   const start = Date.now();
+  let result: SqlExecutionResult;
   try {
-    const result = await executeSql(databaseName, sql);
-    await prismaDb.sqlHistory.create({
-      data: {
-        userId,
-        databaseName,
-        sqlText: sql,
-        queryType: result.queryType,
-        durationMs: result.durationMs,
-        affectedRows: result.affectedRows,
-        status: "SUCCESS",
-      },
-    });
-    await writeAuditLog({
-      userId,
-      action: "SQL_EXECUTE",
-      databaseName,
-      sqlText: sql,
-      affectedRows: result.affectedRows ?? undefined,
-      status: "SUCCESS",
-    });
-    return { sql, result };
+    result = await executeSql(databaseName, sql);
   } catch (error) {
     const message = error instanceof Error ? error.message : "SQL実行に失敗しました";
-    await prismaDb.sqlHistory.create({
-      data: {
-        userId,
-        databaseName,
-        sqlText: sql,
-        queryType: "OTHER",
-        durationMs: Date.now() - start,
-        status: "FAILURE",
-        errorMessage: message,
-      },
+    await saveSqlHistory({
+      userId,
+      databaseName,
+      sqlText: sql,
+      queryType: "OTHER",
+      durationMs: Date.now() - start,
+      status: "FAILURE",
+      errorMessage: message,
     });
-    await writeAuditLog({
+    await writeAuditLogSafely({
       userId,
       action: "SQL_EXECUTE",
       databaseName,
@@ -86,4 +84,23 @@ export async function executeSqlAction(
     });
     return { sql, error: message };
   }
+
+  await saveSqlHistory({
+    userId,
+    databaseName,
+    sqlText: sql,
+    queryType: result.queryType,
+    durationMs: result.durationMs,
+    affectedRows: result.affectedRows,
+    status: "SUCCESS",
+  });
+  await writeAuditLogSafely({
+    userId,
+    action: "SQL_EXECUTE",
+    databaseName,
+    sqlText: sql,
+    affectedRows: result.affectedRows ?? undefined,
+    status: "SUCCESS",
+  });
+  return { sql, result };
 }
