@@ -3,12 +3,29 @@ import type { SqlQueryType } from "@prisma/client";
 /**
  * 文字列リテラル・コメントの中身を空白に置き換える（キーワード検知・複数文検知の誤検知を減らすため）。
  * 完全なSQLパーサーではないが、キーワードマッチングの前処理として十分な安全側の近似。
+ *
+ * **ガードが見る文とMariaDBが実行する文を食い違わせないこと**が要件（#137）。
+ * - 実行可能コメント（感嘆符付きの `/*!` と `/*M!` で始まるブロックコメント）はMariaDBが中身を
+ *   SQLとして実行するため、コメントとして消さずに中身を残す（マーカーと直後のバージョン番号は
+ *   空白へ置き換える）。バージョン番号が実サーバーより新しく実際には無視される場合も、安全側に
+ *   倒して中身を検査する。
+ * - 通常のブロックコメントはMariaDBでは空白と同じ区切りになる（DROP と COLUMN の間に空のコメントを
+ *   挟んでも2語のまま）ため、何も足さずに消すと語が繋がって `\bDROP\b` などをすり抜ける。
+ *   空白1つに置き換える。
  */
 export function stripStringsAndComments(sql: string): string {
   let result = "";
   let i = 0;
+  let inExecutableComment = false;
   while (i < sql.length) {
     const ch = sql[i];
+
+    if (inExecutableComment && ch === "*" && sql[i + 1] === "/") {
+      result += " ";
+      inExecutableComment = false;
+      i += 2;
+      continue;
+    }
 
     if (ch === "'" || ch === '"' || ch === "`") {
       const quote = ch;
@@ -41,9 +58,22 @@ export function stripStringsAndComments(sql: string): string {
       continue;
     }
     if (ch === "/" && sql[i + 1] === "*") {
+      // 実行可能コメントは中身がSQLとして実行されるので、コメントとして消さない。閉じるまでは
+      // 通常のSQLと同じ規則で読み進める。入れ子の実行可能コメントも同様に中身を残す（実サーバーが
+      // どう解釈しても、中身を見逃す方向には倒れない）。
+      const markerLength =
+        sql[i + 2] === "!" ? 3 : /[Mm]/.test(sql[i + 2] ?? "") && sql[i + 3] === "!" ? 4 : 0;
+      if (markerLength > 0) {
+        i += markerLength;
+        while (i < sql.length && sql[i] >= "0" && sql[i] <= "9") i++;
+        result += " ";
+        inExecutableComment = true;
+        continue;
+      }
       i += 2;
       while (i < sql.length && !(sql[i] === "*" && sql[i + 1] === "/")) i++;
       i += 2;
+      result += " ";
       continue;
     }
 
