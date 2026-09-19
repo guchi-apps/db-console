@@ -10,6 +10,10 @@ const ERROR_MESSAGES: Record<string, string> = {
   signin_failed: "ログインに失敗しました。もう一度お試しください。",
   missing_code: "ログインに失敗しました。もう一度お試しください。",
   exchange_failed: "ログインに失敗しました。もう一度お試しください。",
+  reauth_account_mismatch:
+    "本人確認に使ったGoogleアカウントが、ログイン中のアカウントと異なります。もう一度ログインしてください。",
+  reauth_session_expired:
+    "ログインの有効期限が切れていたため、本人確認を完了できませんでした。もう一度ログインしてください。",
 };
 
 export default async function LoginPage({
