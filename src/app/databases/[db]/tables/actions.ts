@@ -7,7 +7,7 @@ import { requireUserId } from "@/lib/session";
 import { createTable, type CreateTableColumnInput } from "@/lib/introspection";
 import { buildSqlType } from "@/lib/column-types";
 import { assertSchemaChangeReauth } from "@/lib/reauth";
-import { writeAuditLog } from "@/lib/audit";
+import { writeAuditLogSafely } from "@/lib/audit";
 
 const MAX_COLUMN_ROWS = 8;
 
@@ -42,16 +42,9 @@ export async function createTableAction(formData: FormData): Promise<void> {
     }
 
     await createTable(db, tableName, columns);
-    await writeAuditLog({
-      userId,
-      action: "TABLE_CREATE",
-      databaseName: db,
-      tableName,
-      status: "SUCCESS",
-    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "テーブル作成に失敗しました";
-    await writeAuditLog({
+    await writeAuditLogSafely({
       userId,
       action: "TABLE_CREATE",
       databaseName: db,
@@ -61,6 +54,14 @@ export async function createTableAction(formData: FormData): Promise<void> {
     });
     redirect(`${newPath}?error=${encodeURIComponent(message)}`);
   }
+
+  await writeAuditLogSafely({
+    userId,
+    action: "TABLE_CREATE",
+    databaseName: db,
+    tableName,
+    status: "SUCCESS",
+  });
 
   revalidatePath(listPath);
   redirect(`${listPath}/${tableName}`);
