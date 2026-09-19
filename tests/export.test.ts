@@ -12,7 +12,7 @@ describe("buildKeysetCondition / buildKeysetParams", () => {
     expect(buildKeysetCondition(["a", "b", "c"])).toBe(
       "(`a` > ?) OR (`a` = ? AND `b` > ?) OR (`a` = ? AND `b` = ? AND `c` > ?)",
     );
-    expect(buildKeysetParams([1, "x", 3n])).toEqual([1, 1, "x", 1, "x", 3n]);
+    expect(buildKeysetParams([1, "x", BigInt(3)])).toEqual([1, 1, "x", 1, "x", BigInt(3)]);
   });
 
   it("プレースホルダーの数と値の数が一致する", () => {
