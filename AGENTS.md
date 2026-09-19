@@ -130,9 +130,24 @@ REVOKE は管理ロール（本番VPSには無い）が要るうえ、`app_` 以
 手打ちで失敗するだけなので許可対象からは外していないが、アプリ自身がビュー定義を読むときは
 従来どおり `information_schema.views.view_definition` を使う。
 
+**判定の前処理 `stripStringsAndComments()` は「MariaDBが実行する文」に合わせる**（#137）。
+`/*! ... */` と `/*M! ... */`（実行可能コメント）は中身をSQLとして実行するので、コメントとして消さず
+中身を残して判定する（マーカーとバージョン番号だけを空白にする）。通常のブロックコメントも、消すのでは
+なく**空白1つに置き換える**——MariaDBでは語の区切りになるため、`DROP/**/COLUMN` を「DROPCOLUMN」へ
+繋げると `\bDROP\b` をすり抜ける。ここを「コメントは全部消す」へ戻さないこと。
+
 **`SHOW GRANTS` を落としているのは許可リストだけ。** `assertNoForbiddenSql()` の `/\bGRANT\b/i` は
 `GRANTS` に一致しない（`\b` が `S` の手前で成立しない）ため、許可リストを拒否リストへ変えると
 `SHOW GRANTS` が通ってしまう。
+
+**結果の行数は `MAX_RESULT_ROWS`（1000件、`src/lib/sql-execute.ts`）で打ち切る**（#136）。本番は
+`--max-old-space-size=128` のため、他アプリの大きいテーブルへの `SELECT *` を全件メモリに載せると
+プロセスが落ちる。`connection.query(sql)` は全行を配列へ積むので使わず、内側のコールバック版
+（`connection.connection.query(sql)`）の `result` イベントで行ごとに受けて数え、上限を超えた行が
+届いた時点で**接続を `destroy()` する**（サーバーは残りの行を送り続けるため、読み残しのある
+コネクションを `release()` でプールへ戻してはいけない）。`SELECT` を外側から `LIMIT` で包む方式は、
+列名の重複・`WITH`・`SHOW` / `EXPLAIN` で壊れるため採らなかった。`SqlExecutionResult.truncated`
+が立ち、画面が打ち切りを表示する。
 
 SQL実行は実行履歴（`SqlHistory`）と監査ログ（`AuditLog` の `SQL_EXECUTE`）の両方へ記録する。
 

@@ -6,6 +6,7 @@ import { requireSessionForPage } from "@/lib/session";
 import { isReauthValid } from "@/lib/reauth";
 import { db as prismaDb } from "@/lib/db";
 import { SchemaChangeNotice } from "@/components/schema-change-notice";
+import { MAX_RESULT_ROWS } from "@/lib/sql-execute";
 import { SqlForm } from "./sql-form";
 
 export default async function SqlPage({ params }: { params: Promise<{ db: string }> }) {
@@ -42,6 +43,7 @@ export default async function SqlPage({ params }: { params: Promise<{ db: string
           SHOW GRANTS・SHOW PROCESSLIST・SHOW VARIABLESなどサーバー全体の情報を返すSQLは実行できません。
           開いているDB以外を指すSQL（`他のDB名.テーブル名` など）も実行できません。
           CREATE TABLE / ALTER TABLE は構造変更のため、実行前に確認と本人確認を求めます。
+          結果は先頭 {MAX_RESULT_ROWS} 件までを表示し、それを超える分は読み込まずに打ち切ります。
         </p>
       </div>
 

@@ -83,6 +83,12 @@ export function SqlForm({ db, reauthVerified }: { db: string; reauthVerified: bo
               <> / 影響行数: {state.result.affectedRows}件</>
             )}
           </p>
+          {state.result.truncated && (
+            <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+              結果が多いため、先頭 {state.result.rows.length} 件で打ち切りました。
+              全件が必要な場合は、WHERE や LIMIT で絞り込んでください。
+            </p>
+          )}
           {state.result.columns.length > 0 && (
             <div className="overflow-x-auto rounded-lg border">
               <table className="w-full text-sm">
