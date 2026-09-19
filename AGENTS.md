@@ -109,17 +109,63 @@ DB側の規則どおり更新される。
 ときは通さない。** MariaDBの `ANALYZE` 系は対象の文を実際に実行するため読み取り専用ではなく、
 `EXPLAIN FOR CONNECTION` は他セッションを覗く。`EXPLAIN FORMAT=JSON SELECT ...` は通る。
 
+**開いているDB以外を名前で指すSQLは拒否する（#134）。** 許可リストの判定（`getPoolForOperation`）が
+見るのは画面のパスにあるDB名だけで、data/schema ロールは GRANT 済みのDBすべてに権限を持つ。
+拒否しないと `app_a` の画面から `SELECT * FROM app_b.users` や `ALTER TABLE app_b.t ...` が通り、
+許可リスト外・除外中の `app_b` にも読み書き・DDLが届く。`executeSql()` が実行前に
+`information_schema.schemata`（ロールから見えるDB＝触れてしまうDB）を引き、
+`assertNoCrossDatabaseAccess()`（`src/lib/sql-guard.ts`）で判定する。
+
+- 開いているDB以外の実在するDB名が、**直後に `.` を伴う識別子**（`app_b.t`・`` `app_b`.`t` ``）、または
+  **`SHOW` の識別子**（`SHOW TABLES FROM app_b`・`SHOW CREATE DATABASE app_b`）として現れたら拒否する。
+  `db.table` と `alias.column` はSQLだけでは区別できないため、実在するDB名との一致で見ている
+  （DB名と同じ名前のエイリアスを `.` 付きで使うSQLは誤って拒否される。安全側の誤検知）
+- **システムDB（`information_schema` 等）は対象から外す**（`FORBIDDEN_DATABASE_NAMES`）。
+  `information_schema` 経由で他DBのテーブル・カラム名を読むことは引き続きできる（メタデータのみ）
+- **識別子の検出は `stripStringsAndComments()` とは別の走査（`extractIdentifiers()`）で行う**が、
+  コメントの読み飛ばし規則は共有する。`--` は直後が空白・制御文字のときだけコメント（MySQLの規則）。
+  `SELECT 1--1 FROM app_b.t` は `--` 以降も実行されるため、無条件にコメント扱いすると見落とす
+- **`/*! ... */` `/*M! ... */`（実行可能コメント）を含むSQLは `assertNoExecutableComments()` で拒否する。**
+  中身がSQLとして実行されるのに、ガードはコメントとして読み飛ばすため、検知をすり抜けられてしまう
+- 検知に失敗した（`information_schema.schemata` を引けない等）ときは実行せずエラーにする（失敗時に通さない）
+
+**`assertNoCrossDatabaseAccess()` を外して「除外したらGRANTをREVOKEする」へ置き換えない。**
+REVOKE は管理ロール（本番VPSには無い）が要るうえ、`app_` 以外の管理対象DBには効かず、
+許可リストに載っている別のDB同士（`app_a` → `app_b`）の行き来も防げない。
+
 **ビューを対象にした `SHOW CREATE VIEW` / `SHOW CREATE TABLE` は、本番では必ず失敗する。**
 本番VPSのロールに `SHOW VIEW` が無く `SHOW VIEW command denied` になる（ローカルは
 `scripts/setup-db.sh` が付与済みのため再現しない。#86 から切り出した手作業Issue待ち）。
 手打ちで失敗するだけなので許可対象からは外していないが、アプリ自身がビュー定義を読むときは
 従来どおり `information_schema.views.view_definition` を使う。
 
+**判定の前処理 `stripStringsAndComments()` は「MariaDBが実行する文」に合わせる**（#137）。
+`/*! ... */` と `/*M! ... */`（実行可能コメント）は中身をSQLとして実行するので、コメントとして消さず
+中身を残して判定する（マーカーとバージョン番号だけを空白にする）。通常のブロックコメントも、消すのでは
+なく**空白1つに置き換える**——MariaDBでは語の区切りになるため、`DROP/**/COLUMN` を「DROPCOLUMN」へ
+繋げると `\bDROP\b` をすり抜ける。ここを「コメントは全部消す」へ戻さないこと。
+
 **`SHOW GRANTS` を落としているのは許可リストだけ。** `assertNoForbiddenSql()` の `/\bGRANT\b/i` は
 `GRANTS` に一致しない（`\b` が `S` の手前で成立しない）ため、許可リストを拒否リストへ変えると
 `SHOW GRANTS` が通ってしまう。
 
+**結果の行数は `MAX_RESULT_ROWS`（1000件、`src/lib/sql-execute.ts`）で打ち切る**（#136）。本番は
+`--max-old-space-size=128` のため、他アプリの大きいテーブルへの `SELECT *` を全件メモリに載せると
+プロセスが落ちる。`connection.query(sql)` は全行を配列へ積むので使わず、内側のコールバック版
+（`connection.connection.query(sql)`）の `result` イベントで行ごとに受けて数え、上限を超えた行が
+届いた時点で**接続を `destroy()` する**（サーバーは残りの行を送り続けるため、読み残しのある
+コネクションを `release()` でプールへ戻してはいけない）。`SELECT` を外側から `LIMIT` で包む方式は、
+列名の重複・`WITH`・`SHOW` / `EXPLAIN` で壊れるため採らなかった。`SqlExecutionResult.truncated`
+が立ち、画面が打ち切りを表示する。
+
 SQL実行は実行履歴（`SqlHistory`）と監査ログ（`AuditLog` の `SQL_EXECUTE`）の両方へ記録する。
+
+**記録は操作の結果が確定したあとに、`try` の外で書く（#135）。** 操作（SQL実行・レコード操作・DDL）だけを
+`try` で囲み、履歴・監査ログの書き込みを同じ `try` に入れない。入れると、操作が成功したあとにメタデータDBの
+書き込みが落ちたとき `catch` に入り、実行済みの操作が「失敗」として記録・表示されて再実行（二重適用）を招く。
+監査ログは `writeAuditLogSafely()`（`src/lib/audit.ts`）で書く——失敗しても `console.error` にとどめ、
+例外を投げない。実行履歴は `sql/actions.ts` の `saveSqlHistory()` が同じ扱い。失敗側の記録にも同じ関数を使う
+（記録の失敗でエラー表示・リダイレクトが漏れないようにするため）。`tests/record-failure.test.ts` が実例。
 
 ### DBの作成とDBユーザーの管理（#91）
 
@@ -174,7 +220,8 @@ MySQL/MariaDBはGRANT文のDB名を「パターン」として扱い、付与す
 （＝許可リストに載らない）が、`listAllManagedDatabaseNames()` には出るので自動登録の対象からも外れる。
 戻すときは「既存DBを登録」から選び直すと `createDatabaseEntry()` が除外を解除する。
 **除外しても `db_console_data` へ付与済みのGRANTは残る**（REVOKEの経路はこのアプリに無い）。
-アプリからは触れなくなるが、権限まで剥がしたいときはMariaDB側の手作業になる。
+アプリの画面からは触れなくなる——SQL実行画面で別DBの名前を指定して届かせる経路も #134 で塞いだ。
+権限まで剥がしたいときはMariaDB側の手作業になる。
 
 **画面表示用の表示名（`ManagedDatabase.label`）は #97 で廃止した**——DB名をそのまま表示する。
 表示名を復活させる変更はこの決定を覆すことになるので、Issueで相談する。
