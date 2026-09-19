@@ -15,6 +15,123 @@ import {
   validateSqlForExecution,
 } from "@/lib/sql-guard";
 
+describe("実行可能コメントと通常コメント（#137）", () => {
+  // MariaDBは /*! ... */ と /*M! ... */ の中身をSQLとして実行する。ガードがコメントとして消すと
+  // 「ガードが見る文」と「実際に実行される文」が食い違う。
+  describe("stripStringsAndComments", () => {
+    it.each([
+      ["ALTER TABLE t /*!DROP COLUMN c*/", /\bDROP\s+COLUMN\b/],
+      ["ALTER TABLE t /*M!DROP COLUMN c*/", /\bDROP\s+COLUMN\b/],
+      ["ALTER TABLE t /*m!DROP COLUMN c*/", /\bDROP\s+COLUMN\b/],
+      ["ALTER TABLE t /*!50100 DROP COLUMN c */", /\bDROP\s+COLUMN\b/],
+      ["ALTER TABLE t /*!50100DROP COLUMN c*/", /\bDROP\s+COLUMN\b/],
+      ["ALTER TABLE t /*M!100100 DROP COLUMN c*/", /\bDROP\s+COLUMN\b/],
+      ["ALTER TABLE t /*! /*! DROP COLUMN c */ */", /\bDROP\s+COLUMN\b/],
+    ])("実行可能コメントの中身を残す: %s", (sql, expected) => {
+      expect(stripStringsAndComments(sql)).toMatch(expected);
+    });
+
+    it("実行可能コメントを閉じたあとの通常のSQLも読み進める", () => {
+      expect(stripStringsAndComments("SELECT /*!1*/ 2 FROM t")).toMatch(/SELECT\s+1?\s*2\s+FROM t/);
+    });
+
+    it("実行可能コメントの中の文字列リテラルは空白に置き換える", () => {
+      const stripped = stripStringsAndComments("SELECT /*! 'DROP */ ' */ 1");
+      expect(stripped).not.toMatch(/DROP/);
+      expect(stripped).toMatch(/1$/);
+    });
+
+    it("通常のコメントは中身ごと消す（感嘆符が無いので実行されない）", () => {
+      expect(stripStringsAndComments("SELECT 1 /* DROP TABLE t */")).not.toMatch(/DROP/);
+      expect(stripStringsAndComments("SELECT 1 /*+ DROP */")).not.toMatch(/DROP/);
+    });
+
+    it("通常のコメントの中に /*! があっても実行可能コメントとして扱わない", () => {
+      expect(stripStringsAndComments("SELECT 1 /* /*! DROP TABLE t */")).not.toMatch(/DROP/);
+    });
+
+    it("通常のコメントは語の区切りとして空白を残す（語が繋がらない）", () => {
+      expect(stripStringsAndComments("ALTER TABLE t DROP/**/COLUMN c")).toMatch(
+        /\bDROP\s+COLUMN\b/,
+      );
+      expect(stripStringsAndComments("SELECT 1 INTO/**/OUTFILE '/tmp/x'")).toMatch(
+        /\bINTO\s+OUTFILE\b/,
+      );
+    });
+
+    it("閉じていない実行可能コメントでも中身を残す", () => {
+      expect(stripStringsAndComments("SELECT 1 /*! DROP")).toMatch(/\bDROP\b/);
+    });
+  });
+
+  describe("assertNoDropOrTruncate", () => {
+    it.each([
+      "ALTER TABLE t /*!DROP COLUMN c*/",
+      "ALTER TABLE t /*M!DROP COLUMN c*/",
+      "ALTER TABLE t /*!50100 DROP COLUMN c */",
+      "/*!DROP TABLE t*/",
+      "/*!TRUNCATE TABLE t*/",
+      "/*M!TRUNCATE TABLE t*/",
+      "ALTER TABLE t DROP/**/COLUMN c",
+      "ALTER TABLE t /*!DROP*//**/COLUMN c",
+    ])("実行可能コメントや区切りコメントに隠したDROP/TRUNCATEを拒否する: %s", (sql) => {
+      expect(() => assertNoDropOrTruncate(sql)).toThrow();
+    });
+
+    it("コメントの中にあるだけのDROPは拒否しない", () => {
+      expect(() => assertNoDropOrTruncate("SELECT 1 /* DROP TABLE t */")).not.toThrow();
+      expect(() => assertNoDropOrTruncate("SELECT 1 /* /*! DROP */")).not.toThrow();
+    });
+  });
+
+  describe("assertNoForbiddenSql", () => {
+    it.each([
+      "SELECT * FROM t /*!INTO OUTFILE '/tmp/x'*/",
+      "SELECT * FROM t /*M!INTO OUTFILE '/tmp/x'*/",
+      "SELECT * FROM t INTO/**/OUTFILE '/tmp/x'",
+      "/*!GRANT ALL ON *.* TO 'x'@'%'*/",
+      "/*!50100 KILL 1 */",
+      "SELECT 1 /*! ; SHUTDOWN */",
+    ])("実行可能コメントや区切りコメントに隠した禁止SQLを拒否する: %s", (sql) => {
+      expect(() => assertNoForbiddenSql(sql)).toThrow();
+    });
+
+    it("コメントの中にあるだけの禁止ワードは拒否しない", () => {
+      expect(() => assertNoForbiddenSql("SELECT 1 /* GRANT */")).not.toThrow();
+    });
+  });
+
+  describe("assertSingleStatement", () => {
+    it("実行可能コメントに隠した2文目を拒否する", () => {
+      expect(() => assertSingleStatement("SELECT 1 /*!; DROP TABLE t*/")).toThrow();
+    });
+  });
+
+  describe("validateSqlForExecution（統合）", () => {
+    it.each([
+      "ALTER TABLE t /*!DROP COLUMN c*/",
+      "ALTER TABLE t DROP/**/COLUMN c",
+      "/*!DROP TABLE t*/",
+      "SELECT * FROM t /*!INTO OUTFILE '/tmp/x'*/",
+      "SELECT 1 /*!; DROP TABLE t*/",
+    ])("拒否する: %s", (sql) => {
+      expect(() => validateSqlForExecution(sql)).toThrow();
+    });
+
+    it("実行可能コメントの中のWHERE句は有効な条件として扱う", () => {
+      expect(validateSqlForExecution("DELETE FROM t /*!WHERE id = 1*/")).toBe("DELETE");
+    });
+
+    it("コメントの中にしかないWHERE句では条件なしDELETEを通さない", () => {
+      expect(() => validateSqlForExecution("DELETE FROM t /* WHERE id = 1 */")).toThrow();
+    });
+
+    it("mysqldump形式の無害な実行可能コメントを含むSELECTは通す", () => {
+      expect(validateSqlForExecution("SELECT /*!40001 SQL_NO_CACHE */ * FROM t")).toBe("SELECT");
+    });
+  });
+});
+
 describe("classifyStatement", () => {
   it.each([
     ["SELECT * FROM users", "SELECT"],
