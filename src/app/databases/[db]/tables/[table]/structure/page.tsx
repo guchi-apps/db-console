@@ -223,7 +223,8 @@ export default async function TableStructurePage({
                         checkedLabel: "許可する",
                         uncheckedLabel: "許可しない",
                       },
-                      { label: "デフォルト", field: "defaultValue" },
+                      { label: "デフォルト", field: "defaultMode", kind: "select" },
+                      { label: "指定する値", field: "defaultValue", empty: "-" },
                       { label: "コメント", field: "comment" },
                     ]}
                     className="min-h-11 rounded-md border px-3 text-sm hover:bg-accent"

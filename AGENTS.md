@@ -33,6 +33,18 @@ DATETIMEが9時間戻り・DATEが前日になり、それを書き戻すと他�
 カラムまで変えてしまう。副作用として、`ON UPDATE CURRENT_TIMESTAMP` のカラムは他のカラムを直したときに
 DB側の規則どおり更新される。
 
+### カラムの変更（MODIFY COLUMN）は定義を丸ごと置き換える（#132）
+
+`MODIFY COLUMN` は書かなかった属性を黙って消す。SQLは `buildModifyColumnSql()`
+（`src/lib/column-definition.ts`）で組み立て、フォームで扱わない `AUTO_INCREMENT`・`ON UPDATE`・
+`INVISIBLE`・カラム単位の `CHARACTER SET`/`COLLATE` を、実行直前にDBから読み直した現在の定義から
+引き継ぐ。引き継ぎ方の分からない属性（生成列など）があるときは、壊すより拒否する。
+
+**`information_schema.columns.column_default` をそのまま `sqlEscape()` して送り返さない。**
+MariaDBは文字列を引用符付き（`'abc'`）、NULLデフォルトを文字列 `NULL`、式をそのまま返すため、
+`'''abc'''`・文字列の `'NULL'` に化ける。解釈は `parseColumnDefault()`（`src/lib/column-default.ts`）で行い、
+フォームでは「変更しない／値を指定／NULL／CURRENT_TIMESTAMP／なし」を明示的に選ばせる。
+
 ### CSV/SQLエクスポートの読み出し（#138）
 
 `src/lib/export.ts` の `streamTableRows()` が全エクスポートの行を読む。**`LIMIT ? OFFSET ?` の

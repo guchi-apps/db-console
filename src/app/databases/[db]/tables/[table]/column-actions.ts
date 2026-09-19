@@ -10,11 +10,12 @@ import {
   addPrimaryKey,
   dropColumn,
   dropIndex,
-  getTableColumns,
   modifyColumn,
   type ColumnModificationInput,
 } from "@/lib/introspection";
 import { buildSqlType, KEEP_CURRENT_TYPE_KEY } from "@/lib/column-types";
+import { isColumnDefaultMode } from "@/lib/column-default";
+import type { ColumnDefaultInput } from "@/lib/column-definition";
 import { assertSchemaChangeReauth } from "@/lib/reauth";
 import { writeAuditLogSafely } from "@/lib/audit";
 
@@ -79,7 +80,9 @@ export async function modifyColumnAction(formData: FormData): Promise<void> {
   const param1 = String(formData.get("param1") ?? "");
   const param2 = String(formData.get("param2") ?? "");
   const nullable = formData.get("nullable") === "on";
-  const defaultValue = String(formData.get("defaultValue") ?? "").trim();
+  const defaultMode = String(formData.get("defaultMode") ?? "keep");
+  // 「値を指定」は空文字（DEFAULT ''）も意味を持つため、trim しない。
+  const defaultValue = String(formData.get("defaultValue") ?? "");
   const comment = String(formData.get("comment") ?? "").trim();
   const positionKind = String(formData.get("positionKind") ?? "keep");
   const positionAfter = String(formData.get("positionAfter") ?? "");
@@ -88,18 +91,16 @@ export async function modifyColumnAction(formData: FormData): Promise<void> {
   await assertSchemaChangeReauth(path);
 
   try {
-    let sqlType: string;
-    if (typeKey === KEEP_CURRENT_TYPE_KEY) {
-      // クライアントから送られた型文字列は信用せず、サーバー側で現在値を再取得する。
-      const columns = await getTableColumns(db, table);
-      const current = columns.find((c) => c.name === columnName);
-      if (!current) {
-        throw new Error(`カラムが見つかりません: ${columnName}`);
-      }
-      sqlType = current.columnType;
-    } else {
-      sqlType = buildSqlType(typeKey, param1, param2);
+    // 「現在の型のまま」は null で渡し、modifyColumn がDBから読み直した現在値を使う
+    // （クライアントから送られた型文字列は信用しない）。
+    const sqlType = typeKey === KEEP_CURRENT_TYPE_KEY ? null : buildSqlType(typeKey, param1, param2);
+
+    // デフォルト値は column_default をフォームへ戻して送り返さず、指定方法を明示的に選ばせる（#132）。
+    if (!isColumnDefaultMode(defaultMode)) {
+      throw new Error("デフォルト値の指定方法が不正です");
     }
+    const defaultInput: ColumnDefaultInput =
+      defaultMode === "value" ? { mode: "value", value: defaultValue } : { mode: defaultMode };
 
     const position: ColumnModificationInput["position"] =
       positionKind === "first" ? "first" : positionKind === "after" ? { after: positionAfter } : undefined;
@@ -107,7 +108,7 @@ export async function modifyColumnAction(formData: FormData): Promise<void> {
     await modifyColumn(db, table, columnName, {
       sqlType,
       nullable,
-      defaultValue: defaultValue || undefined,
+      default: defaultInput,
       comment: comment || undefined,
       position,
     });
