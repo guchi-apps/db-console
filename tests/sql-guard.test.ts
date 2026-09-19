@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  CrossDatabaseAccessError,
+  assertNoCrossDatabaseAccess,
   assertNoDropOrTruncate,
+  assertNoExecutableComments,
   assertNoForbiddenSql,
   assertSingleStatement,
   assertSupportedQueryType,
   assertWhereClauseForMutation,
   classifyStatement,
+  extractIdentifiers,
   isSchemaChangeSql,
+  stripStringsAndComments,
   validateSqlForExecution,
 } from "@/lib/sql-guard";
 
@@ -260,5 +265,161 @@ describe("isSchemaChangeSql", () => {
     "",
   ])("構造を変えないSQLは対象外にする: %s", (sql) => {
     expect(isSchemaChangeSql(sql)).toBe(false);
+  });
+});
+
+describe("assertNoCrossDatabaseAccess（#134）", () => {
+  // app_a の画面を開いている。app_b は GRANT 済みだが許可リスト外（除外中を含む）のDB。
+  const existing = ["app_a", "app_b", "Wordpress"];
+  const run = (sql: string, queryType: Parameters<typeof assertNoCrossDatabaseAccess>[1] = "SELECT") =>
+    assertNoCrossDatabaseAccess(sql, queryType, "app_a", existing);
+
+  it.each([
+    "SELECT * FROM app_b.users",
+    "SELECT * FROM `app_b`.`users`",
+    "SELECT * FROM app_b . users",
+    "SELECT * FROM app_b/* x */./* y */users",
+    "SELECT * FROM APP_B.users",
+    'SELECT * FROM "app_b".users',
+    "SELECT * FROM users u JOIN app_b.orders o ON o.user_id = u.id",
+    "SELECT (SELECT COUNT(*) FROM app_b.users) AS n",
+    "SELECT app_b.fn(1)",
+    "INSERT INTO users (name) SELECT name FROM app_b.users",
+    "UPDATE app_b.users SET a = 1 WHERE id = 1",
+    "DELETE FROM app_b.users WHERE id = 1",
+    "CREATE TABLE app_b.t (id INT)",
+    "CREATE TABLE t LIKE app_b.users",
+    "ALTER TABLE app_b.t ADD COLUMN c INT",
+    "ALTER TABLE t RENAME TO app_b.t",
+    "DESCRIBE app_b.users",
+    "EXPLAIN SELECT * FROM app_b.users",
+    "SELECT * FROM wordpress.wp_posts",
+    // `--` の直後が空白でなければコメントではなく、`FROM app_b.t` はそのまま実行される
+    "SELECT 1--1 FROM app_b.t",
+    "SELECT 1\n--1 FROM app_b.t",
+  ])("別のDBを名前で指すSQLを拒否する: %s", (sql) => {
+    expect(() => run(sql)).toThrow(CrossDatabaseAccessError);
+  });
+
+  it.each([
+    "SHOW TABLES FROM app_b",
+    "SHOW TABLES IN app_b",
+    "SHOW FULL TABLES FROM `app_b`",
+    "SHOW COLUMNS FROM users FROM app_b",
+    "SHOW INDEX FROM users IN app_b",
+    "SHOW TABLE STATUS FROM app_b",
+    "SHOW CREATE DATABASE app_b",
+    "SHOW CREATE TABLE app_b.users",
+    "SHOW TRIGGERS FROM app_b",
+  ])("SHOW で別のDBを指定するSQLを拒否する: %s", (sql) => {
+    expect(() => run(sql, "SHOW")).toThrow(CrossDatabaseAccessError);
+  });
+
+  it.each([
+    "SELECT * FROM users",
+    "SELECT * FROM app_a.users",
+    "SELECT * FROM `app_a`.`users`",
+    "SELECT u.id FROM users u",
+    // 文字列リテラル・コメントの中は識別子ではない
+    "SELECT * FROM users WHERE name = 'app_b.users'",
+    "SELECT * FROM users WHERE name = \"app_b\"",
+    "SELECT * FROM users -- app_b.users",
+    "SELECT * FROM users # app_b.users",
+    "SELECT * FROM users /* app_b.users */",
+    // 別のDB名を列名・テーブル名として使うだけ（`.` の直前ではない）
+    "SELECT app_b FROM users",
+    "SELECT u.app_b FROM users u",
+    // 接頭辞が同じだけの別名
+    "SELECT * FROM app_b2.users",
+    "SELECT * FROM xapp_b.users",
+    // システムDBは呼び出し側で existingDatabaseNames から外す前提（ここでは通る）
+    "SELECT * FROM information_schema.tables",
+  ])("開いているDBだけを指すSQLは通す: %s", (sql) => {
+    expect(() => run(sql)).not.toThrow();
+  });
+
+  it.each([
+    "SHOW TABLES",
+    "SHOW TABLES FROM app_a",
+    "SHOW COLUMNS FROM users",
+    "SHOW CREATE TABLE users",
+    "SHOW TABLES LIKE 'app_b'",
+    'SHOW TABLES LIKE "app_b"',
+    "SHOW TABLES FROM information_schema",
+  ])("開いているDBだけを指すSHOWは通す: %s", (sql) => {
+    expect(() => run(sql, "SHOW")).not.toThrow();
+  });
+
+  it("SHOW 以外では、`.` を伴わない別DB名の識別子は拒否しない", () => {
+    expect(() => run("SELECT * FROM app_b")).not.toThrow();
+  });
+
+  it("他にDBが無ければ何も拒否しない", () => {
+    expect(() =>
+      assertNoCrossDatabaseAccess("SELECT * FROM app_b.t", "SELECT", "app_a", ["app_a"]),
+    ).not.toThrow();
+  });
+
+  it("エラーメッセージに参照先のDB名を含める", () => {
+    expect(() => run("SELECT * FROM app_b.users")).toThrow(/app_b/);
+  });
+
+  it("バッククォート内の連続バッククォートを1文字として読む", () => {
+    expect(() =>
+      assertNoCrossDatabaseAccess("SELECT * FROM `a``b`.t", "SELECT", "app_a", ["a`b"]),
+    ).toThrow(CrossDatabaseAccessError);
+  });
+});
+
+describe("extractIdentifiers", () => {
+  it("引用符なし・バッククォート・二重引用符の識別子と、直後のドットを取り出す", () => {
+    expect(extractIdentifiers("SELECT a.b, `c d`.`e` FROM \"f\"")).toEqual([
+      { name: "SELECT", quote: "none", followedByDot: false },
+      { name: "a", quote: "none", followedByDot: true },
+      { name: "b", quote: "none", followedByDot: false },
+      { name: "c d", quote: "backtick", followedByDot: true },
+      { name: "e", quote: "backtick", followedByDot: false },
+      { name: "FROM", quote: "none", followedByDot: false },
+      { name: "f", quote: "double", followedByDot: false },
+    ]);
+  });
+
+  it("文字列リテラルとコメントは識別子に含めない", () => {
+    expect(extractIdentifiers("SELECT 'x.y' /* z.w */ -- q.r\n")).toEqual([
+      { name: "SELECT", quote: "none", followedByDot: false },
+    ]);
+  });
+});
+
+describe("assertNoExecutableComments（#134）", () => {
+  it.each([
+    "SELECT * FROM /*! app_b.users */ t",
+    "SELECT 1 /*!50000 + 1 */",
+    "SELECT 1 /*M! + 1 */",
+  ])("実行可能コメントを拒否する: %s", (sql) => {
+    expect(() => assertNoExecutableComments(sql)).toThrow();
+    expect(() => validateSqlForExecution(sql)).toThrow();
+  });
+
+  it.each([
+    "SELECT 1 /* 普通のコメント */",
+    "SELECT 1 /*+ MAX_EXECUTION_TIME(1000) */",
+    "SELECT '/*! literal */'",
+    "SELECT 1 -- /*! comment",
+    "SELECT `/*!`",
+  ])("普通のコメントや文字列リテラルは通す: %s", (sql) => {
+    expect(() => assertNoExecutableComments(sql)).not.toThrow();
+  });
+});
+
+describe("stripStringsAndComments（`--` の扱い）", () => {
+  it("`--` の直後が空白なら行コメントとして落とす", () => {
+    expect(stripStringsAndComments("SELECT 1 -- INTO OUTFILE 'x'\n")).toBe("SELECT 1 \n");
+    expect(stripStringsAndComments("SELECT 1 --")).toBe("SELECT 1 ");
+  });
+
+  it("`--` の直後が空白でなければコメントではないので、続きも検査対象に残す", () => {
+    expect(stripStringsAndComments("SELECT 1--1 FROM t INTO OUTFILE 'x'")).toContain("INTO OUTFILE");
+    expect(() => assertNoForbiddenSql("SELECT 1--1 FROM t INTO OUTFILE 'x'")).toThrow();
   });
 });

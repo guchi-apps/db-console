@@ -87,6 +87,30 @@ This version has breaking changes — APIs, conventions, and file structure may 
 ときは通さない。** MariaDBの `ANALYZE` 系は対象の文を実際に実行するため読み取り専用ではなく、
 `EXPLAIN FOR CONNECTION` は他セッションを覗く。`EXPLAIN FORMAT=JSON SELECT ...` は通る。
 
+**開いているDB以外を名前で指すSQLは拒否する（#134）。** 許可リストの判定（`getPoolForOperation`）が
+見るのは画面のパスにあるDB名だけで、data/schema ロールは GRANT 済みのDBすべてに権限を持つ。
+拒否しないと `app_a` の画面から `SELECT * FROM app_b.users` や `ALTER TABLE app_b.t ...` が通り、
+許可リスト外・除外中の `app_b` にも読み書き・DDLが届く。`executeSql()` が実行前に
+`information_schema.schemata`（ロールから見えるDB＝触れてしまうDB）を引き、
+`assertNoCrossDatabaseAccess()`（`src/lib/sql-guard.ts`）で判定する。
+
+- 開いているDB以外の実在するDB名が、**直後に `.` を伴う識別子**（`app_b.t`・`` `app_b`.`t` ``）、または
+  **`SHOW` の識別子**（`SHOW TABLES FROM app_b`・`SHOW CREATE DATABASE app_b`）として現れたら拒否する。
+  `db.table` と `alias.column` はSQLだけでは区別できないため、実在するDB名との一致で見ている
+  （DB名と同じ名前のエイリアスを `.` 付きで使うSQLは誤って拒否される。安全側の誤検知）
+- **システムDB（`information_schema` 等）は対象から外す**（`FORBIDDEN_DATABASE_NAMES`）。
+  `information_schema` 経由で他DBのテーブル・カラム名を読むことは引き続きできる（メタデータのみ）
+- **識別子の検出は `stripStringsAndComments()` とは別の走査（`extractIdentifiers()`）で行う**が、
+  コメントの読み飛ばし規則は共有する。`--` は直後が空白・制御文字のときだけコメント（MySQLの規則）。
+  `SELECT 1--1 FROM app_b.t` は `--` 以降も実行されるため、無条件にコメント扱いすると見落とす
+- **`/*! ... */` `/*M! ... */`（実行可能コメント）を含むSQLは `assertNoExecutableComments()` で拒否する。**
+  中身がSQLとして実行されるのに、ガードはコメントとして読み飛ばすため、検知をすり抜けられてしまう
+- 検知に失敗した（`information_schema.schemata` を引けない等）ときは実行せずエラーにする（失敗時に通さない）
+
+**`assertNoCrossDatabaseAccess()` を外して「除外したらGRANTをREVOKEする」へ置き換えない。**
+REVOKE は管理ロール（本番VPSには無い）が要るうえ、`app_` 以外の管理対象DBには効かず、
+許可リストに載っている別のDB同士（`app_a` → `app_b`）の行き来も防げない。
+
 **ビューを対象にした `SHOW CREATE VIEW` / `SHOW CREATE TABLE` は、本番では必ず失敗する。**
 本番VPSのロールに `SHOW VIEW` が無く `SHOW VIEW command denied` になる（ローカルは
 `scripts/setup-db.sh` が付与済みのため再現しない。#86 から切り出した手作業Issue待ち）。
@@ -152,7 +176,8 @@ MySQL/MariaDBはGRANT文のDB名を「パターン」として扱い、付与す
 （＝許可リストに載らない）が、`listAllManagedDatabaseNames()` には出るので自動登録の対象からも外れる。
 戻すときは「既存DBを登録」から選び直すと `createDatabaseEntry()` が除外を解除する。
 **除外しても `db_console_data` へ付与済みのGRANTは残る**（REVOKEの経路はこのアプリに無い）。
-アプリからは触れなくなるが、権限まで剥がしたいときはMariaDB側の手作業になる。
+アプリの画面からは触れなくなる——SQL実行画面で別DBの名前を指定して届かせる経路も #134 で塞いだ。
+権限まで剥がしたいときはMariaDB側の手作業になる。
 
 **画面表示用の表示名（`ManagedDatabase.label`）は #97 で廃止した**——DB名をそのまま表示する。
 表示名を復活させる変更はこの決定を覆すことになるので、Issueで相談する。
