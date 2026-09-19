@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { KEEP_CURRENT_TYPE_KEY } from "@/lib/column-constants";
+import { describeColumnDefault, parseColumnDefault } from "@/lib/column-default";
 import type { ColumnTypeOption } from "@/lib/column-types";
 import type { ColumnInfo } from "@/lib/introspection";
 
@@ -107,7 +108,11 @@ export function ColumnTypeSelectFields({ options }: { options: ColumnTypeOption[
 
 /**
  * カラム編集フォーム用。「現在の型のまま」を先頭に加えた選択肢を出し、
- * NULL可否・デフォルト値・コメントは現在値を初期表示する。並び順は「変更しない」を既定にする。
+ * NULL可否・コメントは現在値を初期表示する。並び順は「変更しない」を既定にする。
+ *
+ * デフォルト値は「変更しない／値を指定／NULL／CURRENT_TIMESTAMP／なし」を選ばせる（#132）。
+ * `column_default` はMariaDBが引用符付き（`'abc'`）や式のまま返すため、入力欄へ戻して
+ * 送り返すと値が化ける。入力欄の初期値には、解釈したリテラルの中身だけを入れる。
  */
 export function ColumnEditFields({
   column,
@@ -125,7 +130,9 @@ export function ColumnEditFields({
   const allOptions = [keepCurrentOption, ...options];
   const [typeKey, setTypeKey] = useState(keepCurrentOption.key);
   const [positionKind, setPositionKind] = useState("keep");
+  const [defaultMode, setDefaultMode] = useState("keep");
   const current = allOptions.find((o) => o.key === typeKey);
+  const currentDefault = parseColumnDefault(column.columnDefault);
 
   return (
     <div className="flex flex-wrap items-end gap-2 rounded-md border p-2">
@@ -170,13 +177,30 @@ export function ColumnEditFields({
       </label>
       <label className="flex flex-col gap-1 text-xs">
         デフォルト値
-        <input
-          type="text"
-          name="defaultValue"
-          defaultValue={column.columnDefault ?? ""}
-          className="w-32 rounded-md border px-2 py-1 text-sm"
-        />
+        <select
+          name="defaultMode"
+          value={defaultMode}
+          onChange={(e) => setDefaultMode(e.target.value)}
+          className="rounded-md border px-2 py-1 text-sm"
+        >
+          <option value="keep">変更しない（現在: {describeColumnDefault(currentDefault)}）</option>
+          <option value="value">値を指定</option>
+          <option value="null">NULL</option>
+          <option value="current_timestamp">CURRENT_TIMESTAMP（現在日時）</option>
+          <option value="none">なし</option>
+        </select>
       </label>
+      {defaultMode === "value" && (
+        <label className="flex flex-col gap-1 text-xs">
+          指定する値
+          <input
+            type="text"
+            name="defaultValue"
+            defaultValue={currentDefault.kind === "literal" ? currentDefault.value : ""}
+            className="w-32 rounded-md border px-2 py-1 text-sm"
+          />
+        </label>
+      )}
       <label className="flex flex-col gap-1 text-xs">
         コメント
         <input

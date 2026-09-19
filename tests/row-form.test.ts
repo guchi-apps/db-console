@@ -19,6 +19,8 @@ function column(overrides: Partial<ColumnInfo> & Pick<ColumnInfo, "name" | "data
     columnKey: "",
     comment: null,
     ordinalPosition: 1,
+    characterSetName: null,
+    collationName: null,
     ...overrides,
   };
 }
