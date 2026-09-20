@@ -12,7 +12,7 @@ import {
 } from "@/lib/config";
 import { createDatabase } from "@/lib/admin-db";
 import { isReauthValid } from "@/lib/reauth";
-import { writeAuditLog } from "@/lib/audit";
+import { writeAuditLogSafely } from "@/lib/audit";
 
 function redirectWithError(message: string): never {
   redirect(`/settings?error=${encodeURIComponent(message)}`);
@@ -27,24 +27,21 @@ export async function createDatabaseAction(formData: FormData): Promise<void> {
   const userId = await requireUserId();
   const name = String(formData.get("name") ?? "").trim();
 
+  let created: Awaited<ReturnType<typeof createDatabaseEntry>>;
+  let grantedAccounts: Awaited<ReturnType<typeof createDatabase>>["grantedAccounts"];
+  // 監査ログは操作の結果が確定したあとに書く（try に入れると、操作が済んだあとに
+  // メタデータDBの書き込みが落ちたとき、実行済みの操作が「失敗」として扱われる。#135・#143）。
   try {
     const parsedName = databaseNameSchema.safeParse(name);
     if (!parsedName.success) {
       throw new Error(parsedName.error.issues[0]?.message ?? "DB名が不正です");
     }
     assertManagedName("DB名", name);
-    const { grantedAccounts } = await createDatabase(name);
-    const entry = await createDatabaseEntry({ name });
-    await writeAuditLog({
-      userId,
-      action: "DATABASE_CREATE",
-      databaseName: name,
-      afterData: { ...entry, grantedAccounts },
-      status: "SUCCESS",
-    });
+    ({ grantedAccounts } = await createDatabase(name));
+    created = await createDatabaseEntry({ name });
   } catch (error) {
     const message = error instanceof Error ? error.message : "DBの作成に失敗しました";
-    await writeAuditLog({
+    await writeAuditLogSafely({
       userId,
       action: "DATABASE_CREATE",
       databaseName: name,
@@ -53,6 +50,14 @@ export async function createDatabaseAction(formData: FormData): Promise<void> {
     });
     redirectWithError(message);
   }
+
+  await writeAuditLogSafely({
+    userId,
+    action: "DATABASE_CREATE",
+    databaseName: name,
+    afterData: { ...created, grantedAccounts },
+    status: "SUCCESS",
+  });
 
   revalidatePath("/settings");
   revalidatePath("/");
@@ -63,18 +68,12 @@ export async function createManagedDatabaseAction(formData: FormData): Promise<v
   const userId = await requireUserId();
   const name = String(formData.get("name") ?? "");
 
+  let entry: Awaited<ReturnType<typeof createDatabaseEntry>>;
   try {
-    const entry = await createDatabaseEntry({ name });
-    await writeAuditLog({
-      userId,
-      action: "MANAGED_DB_CREATE",
-      databaseName: entry.name,
-      afterData: entry,
-      status: "SUCCESS",
-    });
+    entry = await createDatabaseEntry({ name });
   } catch (error) {
     const message = error instanceof Error ? error.message : "登録に失敗しました";
-    await writeAuditLog({
+    await writeAuditLogSafely({
       userId,
       action: "MANAGED_DB_CREATE",
       databaseName: name,
@@ -83,6 +82,14 @@ export async function createManagedDatabaseAction(formData: FormData): Promise<v
     });
     redirectWithError(message);
   }
+
+  await writeAuditLogSafely({
+    userId,
+    action: "MANAGED_DB_CREATE",
+    databaseName: entry.name,
+    afterData: entry,
+    status: "SUCCESS",
+  });
 
   revalidatePath("/settings");
   revalidatePath("/");
@@ -101,15 +108,9 @@ export async function deleteManagedDatabaseAction(formData: FormData): Promise<v
 
   try {
     await deleteDatabaseEntry(name);
-    await writeAuditLog({
-      userId,
-      action: "MANAGED_DB_DELETE",
-      databaseName: name,
-      status: "SUCCESS",
-    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "削除に失敗しました";
-    await writeAuditLog({
+    await writeAuditLogSafely({
       userId,
       action: "MANAGED_DB_DELETE",
       databaseName: name,
@@ -118,6 +119,13 @@ export async function deleteManagedDatabaseAction(formData: FormData): Promise<v
     });
     redirectWithError(message);
   }
+
+  await writeAuditLogSafely({
+    userId,
+    action: "MANAGED_DB_DELETE",
+    databaseName: name,
+    status: "SUCCESS",
+  });
 
   revalidatePath("/settings");
   revalidatePath("/");
