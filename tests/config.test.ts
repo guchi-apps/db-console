@@ -1,10 +1,24 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   assertManagedName,
   databaseEntryInputSchema,
   databaseNameSchema,
   isManagedName,
 } from "@/lib/config";
+
+const originalDbName = process.env.DB_NAME;
+
+beforeEach(() => {
+  delete process.env.DB_NAME;
+});
+
+afterEach(() => {
+  if (originalDbName === undefined) {
+    delete process.env.DB_NAME;
+  } else {
+    process.env.DB_NAME = originalDbName;
+  }
+});
 
 describe("databaseNameSchema", () => {
   it("正しいDB名を受け付ける", () => {
@@ -17,6 +31,19 @@ describe("databaseNameSchema", () => {
       expect(() => databaseNameSchema.parse(name)).toThrow();
     },
   );
+
+  // 画面の選択肢では除いていても、細工したPOSTで届くため、サーバー側の検証でも拒否する（#140）。
+  it("メタデータDB（DB_NAME）を拒否し、他のDB名は受け付ける", () => {
+    process.env.DB_NAME = "app_db_console";
+    expect(() => databaseNameSchema.parse("app_db_console")).toThrow(
+      "メタデータDBは管理対象に指定できません",
+    );
+    expect(databaseNameSchema.parse("app_car")).toBe("app_car");
+  });
+
+  it("DB_NAME が未設定でも、他のDB名を巻き込まない", () => {
+    expect(databaseNameSchema.parse("app_db_console")).toBe("app_db_console");
+  });
 
   it.each(["app-car", "app car", "app.car", "app`car", ""])(
     "不正な文字を含むDB名 %s を拒否する",
@@ -33,6 +60,11 @@ describe("databaseEntryInputSchema", () => {
 
   it("不正なDB名を拒否する", () => {
     expect(() => databaseEntryInputSchema.parse({ name: "app-car" })).toThrow();
+  });
+
+  it("メタデータDB（DB_NAME）を拒否する", () => {
+    process.env.DB_NAME = "app_db_console";
+    expect(() => databaseEntryInputSchema.parse({ name: "app_db_console" })).toThrow();
   });
 
   // 表示名（label）は #97 で、操作モード（mode）は #105 で廃止した。

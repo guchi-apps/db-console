@@ -53,6 +53,14 @@ export const databaseNameSchema = z
   .regex(/^[A-Za-z0-9_]+$/, "DB名は英数字とアンダースコアのみ使用できます")
   .refine((name) => !FORBIDDEN_DATABASE_NAMES.has(name), {
     message: "システムDBは管理対象に指定できません",
+  })
+  // このアプリ自身のメタデータDB（セッション・監査ログ）。画面の選択肢や自動登録では除いているが、
+  // 細工したPOSTでも登録できないよう、サーバー側の検証（登録・作成の両経路が通る）でも拒否する（#140）。
+  // 登録できると、`app\_%` に GRANT OPTION を持つ管理ロールの権限がこのDBにも掛かるため、
+  // DBユーザー画面から任意の app_ ユーザーへ、このアプリ自身のDBへの権限を付与できてしまう。
+  // 環境変数は検証のたびに読む（テストで差し替えられるようにするため）。
+  .refine((name) => name !== process.env.DB_NAME, {
+    message: "このアプリ自身のメタデータDBは管理対象に指定できません",
   });
 
 export const databaseEntryInputSchema = z.object({

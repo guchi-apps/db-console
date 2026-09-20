@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { requireUserId } from "@/lib/session";
 import { getDatabaseEntry, isManagedName } from "@/lib/config";
 import { isReauthValid } from "@/lib/reauth";
-import { writeAuditLog } from "@/lib/audit";
+import { writeAuditLogSafely } from "@/lib/audit";
 import {
   PRESET_RANK,
   PRIVILEGE_PRESETS,
@@ -48,20 +48,14 @@ export async function createDatabaseUserAction(
   const host = String(formData.get("host") ?? "").trim();
   const account = `${name}@${host}`;
 
+  // 監査ログは操作の結果が確定したあとに、try の外で書く。ここで落ちても、作成済みの
+  // ユーザーのパスワード（保存しておらず、この1回しか返せない）を返せなくならないようにする（#143）。
+  let password: string;
   try {
-    const { password } = await createDatabaseUser(name, host);
-    await writeAuditLog({
-      userId,
-      action: "DB_USER_CREATE",
-      databaseName: NO_DATABASE,
-      objectName: account,
-      status: "SUCCESS",
-    });
-    revalidatePath(USERS_PATH);
-    return { password, account };
+    ({ password } = await createDatabaseUser(name, host));
   } catch (error) {
     const message = error instanceof Error ? error.message : "ユーザーの作成に失敗しました";
-    await writeAuditLog({
+    await writeAuditLogSafely({
       userId,
       action: "DB_USER_CREATE",
       databaseName: NO_DATABASE,
@@ -71,6 +65,16 @@ export async function createDatabaseUserAction(
     });
     return { error: message };
   }
+
+  await writeAuditLogSafely({
+    userId,
+    action: "DB_USER_CREATE",
+    databaseName: NO_DATABASE,
+    objectName: account,
+    status: "SUCCESS",
+  });
+  revalidatePath(USERS_PATH);
+  return { password, account };
 }
 
 export async function resetDatabaseUserPasswordAction(
@@ -87,19 +91,12 @@ export async function resetDatabaseUserPasswordAction(
     requireReauth();
   }
 
+  let password: string;
   try {
-    const { password } = await resetDatabaseUserPassword(name, host);
-    await writeAuditLog({
-      userId,
-      action: "DB_USER_PASSWORD_RESET",
-      databaseName: NO_DATABASE,
-      objectName: account,
-      status: "SUCCESS",
-    });
-    return { password, account };
+    ({ password } = await resetDatabaseUserPassword(name, host));
   } catch (error) {
     const message = error instanceof Error ? error.message : "パスワードの再発行に失敗しました";
-    await writeAuditLog({
+    await writeAuditLogSafely({
       userId,
       action: "DB_USER_PASSWORD_RESET",
       databaseName: NO_DATABASE,
@@ -109,6 +106,15 @@ export async function resetDatabaseUserPasswordAction(
     });
     return { error: message };
   }
+
+  await writeAuditLogSafely({
+    userId,
+    action: "DB_USER_PASSWORD_RESET",
+    databaseName: NO_DATABASE,
+    objectName: account,
+    status: "SUCCESS",
+  });
+  return { password, account };
 }
 
 export async function dropDatabaseUserAction(formData: FormData): Promise<void> {
@@ -123,16 +129,9 @@ export async function dropDatabaseUserAction(formData: FormData): Promise<void> 
 
   try {
     await dropDatabaseUser(name, host);
-    await writeAuditLog({
-      userId,
-      action: "DB_USER_DROP",
-      databaseName: NO_DATABASE,
-      objectName: account,
-      status: "SUCCESS",
-    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "ユーザーの削除に失敗しました";
-    await writeAuditLog({
+    await writeAuditLogSafely({
       userId,
       action: "DB_USER_DROP",
       databaseName: NO_DATABASE,
@@ -142,6 +141,14 @@ export async function dropDatabaseUserAction(formData: FormData): Promise<void> 
     });
     redirectWithError(message);
   }
+
+  await writeAuditLogSafely({
+    userId,
+    action: "DB_USER_DROP",
+    databaseName: NO_DATABASE,
+    objectName: account,
+    status: "SUCCESS",
+  });
 
   revalidatePath(USERS_PATH);
   redirect(USERS_PATH);
@@ -164,28 +171,20 @@ export async function updateDatabaseUserPrivilegeAction(formData: FormData): Pro
     redirectWithError(`権限を変更できないDBです: ${databaseName}`);
   }
 
+  let current: Awaited<ReturnType<typeof getDatabaseUserGrant>>;
   try {
-    const current = await getDatabaseUserGrant(name, host, databaseName);
+    current = await getDatabaseUserGrant(name, host, databaseName);
     // 権限を弱める変更は、そのユーザーを使うアプリが動かなくなるため再認証を求める。
     if (PRESET_RANK[preset] < PRESET_RANK[current.preset] && !(await isReauthValid())) {
       requireReauth();
     }
 
     await setDatabaseUserPrivilege(name, host, databaseName, preset);
-    await writeAuditLog({
-      userId,
-      action: "DB_USER_GRANT",
-      databaseName,
-      objectName: account,
-      beforeData: { preset: current.preset, privileges: current.privileges },
-      afterData: { preset },
-      status: "SUCCESS",
-    });
   } catch (error) {
     // requireReauth() の redirect を握りつぶさないよう、Next.jsの制御用エラーは素通しする。
     if (isRedirectError(error)) throw error;
     const message = error instanceof Error ? error.message : "権限の変更に失敗しました";
-    await writeAuditLog({
+    await writeAuditLogSafely({
       userId,
       action: "DB_USER_GRANT",
       databaseName,
@@ -195,6 +194,16 @@ export async function updateDatabaseUserPrivilegeAction(formData: FormData): Pro
     });
     redirectWithError(message);
   }
+
+  await writeAuditLogSafely({
+    userId,
+    action: "DB_USER_GRANT",
+    databaseName,
+    objectName: account,
+    beforeData: { preset: current.preset, privileges: current.privileges },
+    afterData: { preset },
+    status: "SUCCESS",
+  });
 
   revalidatePath(USERS_PATH);
   redirect(USERS_PATH);

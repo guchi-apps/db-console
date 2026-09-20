@@ -175,15 +175,30 @@ describe("executeSql（#134）", () => {
     expect(emitterQuery).not.toHaveBeenCalled();
   });
 
-  it("開いているDBだけを指すSQLは、これまでどおり USE してから実行する", async () => {
+  it("開いているDBだけを指すSQLは、USE してから実行し、使ったコネクションは破棄する（#139）", async () => {
     const result = await executeSql("app_a", "SELECT * FROM app_a.users");
 
     const issued = query.mock.calls.map(([sql]) => sql as string);
     expect(issued[1]).toBe("USE `app_a`");
     expect(emitterQuery).toHaveBeenCalledWith("SELECT * FROM app_a.users");
     expect(result.rows).toEqual([{ id: 1 }]);
-    expect(release).toHaveBeenCalledTimes(1);
-    expect(destroy).not.toHaveBeenCalled();
+    // USE 済みのコネクションをプールへ戻すと、カレントDBの権限がキャッシュされたまま残る。
+    expect(destroy).toHaveBeenCalledTimes(1);
+    expect(release).not.toHaveBeenCalled();
+  });
+
+  it("SQLの実行が失敗しても、USE したコネクションは破棄する（#139）", async () => {
+    emitterQuery.mockImplementation(() => {
+      const emitter = new EventEmitter() as QueryEmitter;
+      queueMicrotask(() => emitter.emit("error", new Error("Table doesn't exist")));
+      return emitter;
+    });
+
+    await expect(executeSql("app_a", "SELECT * FROM app_a.nope")).rejects.toThrow(
+      "Table doesn't exist",
+    );
+    expect(destroy).toHaveBeenCalledTimes(1);
+    expect(release).not.toHaveBeenCalled();
   });
 
   it("information_schema の参照は引き続き通す", async () => {
