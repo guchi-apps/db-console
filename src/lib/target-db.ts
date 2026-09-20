@@ -8,7 +8,8 @@ import { FORBIDDEN_DATABASE_NAMES, getDatabaseEntry } from "@/lib/config";
 // max_connections=50 をVPS上の全アプリで共有しているため、プールは小さく保つ。
 // database を固定せず、常に完全修飾テーブル名（lib/identifier.ts の qualifyTable）で
 // クエリを組み立てることで、プールされたコネクション間で `USE` によるセッション状態を
-// 持ち回さない設計にしている。
+// 持ち回さない設計にしている。SQL実行画面（sql-execute.ts）だけは修飾なしの表名を通すために
+// `USE` を発行するが、そのコネクションは使い終えたら破棄し、プールへ戻さない（#139）。
 
 let dataPool: Pool | null = null;
 let schemaPool: Pool | null = null;

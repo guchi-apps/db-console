@@ -93,8 +93,9 @@ async function listAccountHosts(pool: Pool, user: string): Promise<string[]> {
 // 計画レビューG1の指摘1）。MySQL 8.0.46 で、GRANT前から張っていたコネクションが
 // information_schema.schemata に新DBを返し、追加したCREATE権限でそのままCREATE TABLEできた。
 // DBレベル権限がセッションにキャッシュされるのは `USE` で選んだカレントDBについてで、
-// このアプリは `USE` を発行せず既定DBも持たない（target-db.ts の設計）ため、
-// 完全修飾名でのアクセスは毎回ACLを引き直す。したがってプールの張り直しは不要。
+// プール内のコネクションは `USE` 済みにならず既定DBも持たない（target-db.ts の設計。SQL実行画面が
+// `USE` したコネクションは使用後に破棄する。#139）ため、完全修飾名でのアクセスは毎回ACLを
+// 引き直す。したがってプールの張り直しは不要。
 async function grantToRole(
   pool: Pool,
   user: string,
