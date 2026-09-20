@@ -130,8 +130,12 @@ async function listReachableDatabaseNames(connection: PoolConnection): Promise<s
 /**
  * 任意のSQL文を1文だけ実行する。lib/sql-guard.ts の全チェックを通過したSQLのみ実行する。
  * プールされたコネクションは database を固定していないため、実行直前に USE で
- * 対象DBへ切り替える（このコネクションは release 後に別DB向けに再利用されうるが、
- * 次の利用者も必ず自分の USE を発行するため問題ない）。
+ * 対象DBへ切り替える（`SELECT * FROM users` のような修飾なしの表名を通すため）。
+ * **USE を発行したコネクションはプールへ戻さず、終わったら必ず破棄する**（#139）。
+ * カレントDBを持ったコネクションが残ると、そのDBへの権限がセッションにキャッシュされ、
+ * 完全修飾名でアクセスするレコード操作・DDLが GRANT の変更を拾えなくなりうる
+ * （admin-db.ts の `grantToRole` のコメントが「プールの張り直しは不要」と言える根拠は、
+ * プール内のコネクションが USE 済みにならないことにある）。
  *
  * 許可リストの判定は開いているDB名にしか掛からず、ロールは GRANT 済みのDBすべてに権限を持つため、
  * SQL側で `app_b.t` のように別のDBを名前で指すと許可リスト外のDBにも届いてしまう。
@@ -154,6 +158,8 @@ export async function executeSql(
       databaseName,
       await listReachableDatabaseNames(connection),
     );
+    // USE が成功したか失敗したかに関わらず、ここから先はプールへ戻さない。
+    discard = true;
     await connection.query(`USE ${quoteIdentifier(databaseName)}`);
 
     const start = Date.now();
@@ -162,6 +168,7 @@ export async function executeSql(
       connection.connection.query(sql) as unknown as QueryEmitter,
       MAX_RESULT_ROWS,
       () => {
+        // 打ち切ったコネクションは、サーバーが残りの行を送り続けるため必ず破棄する。
         discard = true;
       },
     );
