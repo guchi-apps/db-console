@@ -97,6 +97,18 @@ describe("GET /auth/callback", () => {
       "https://console.example.com/login?error=reauth_account_mismatch",
     );
     expect(state.signOut).toHaveBeenCalledTimes(1);
+    expect(state.signOut).toHaveBeenCalledWith({ scope: "local" });
+    expect(state.appSessionUpsert).not.toHaveBeenCalled();
+  });
+
+  it("許可リストにないユーザーは local scope でログアウトして拒否する（#161）", async () => {
+    state.claimsQueue = [claimsOf("sub-x", "session-x", "stranger@example.com")];
+
+    const res = await callback("code=abc");
+
+    expect(res.headers.get("location")).toBe("https://console.example.com/login?error=forbidden");
+    expect(state.signOut).toHaveBeenCalledTimes(1);
+    expect(state.signOut).toHaveBeenCalledWith({ scope: "local" });
     expect(state.appSessionUpsert).not.toHaveBeenCalled();
   });
 
@@ -110,6 +122,7 @@ describe("GET /auth/callback", () => {
       "https://console.example.com/login?error=reauth_session_expired",
     );
     expect(state.signOut).toHaveBeenCalledTimes(1);
+    expect(state.signOut).toHaveBeenCalledWith({ scope: "local" });
     expect(state.appSessionUpsert).not.toHaveBeenCalled();
   });
 

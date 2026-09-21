@@ -40,8 +40,10 @@ export async function GET(request: Request) {
   const claims = data?.claims;
 
   // 許可リスト判定はログイン直後にも行う（issue #2: 許可されたユーザー以外を拒否する）。
+  // このファイルの signOut は、共有Supabaseの他アプリのセッションを巻き込まないよう
+  // すべて local scope で呼ぶ（#161）。
   if (!claims?.email || !isEmailAllowed(claims.email)) {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" });
     return NextResponse.redirect(`${origin}/login?error=forbidden`);
   }
 
@@ -49,7 +51,7 @@ export async function GET(request: Request) {
   // 有効で、かつ同じユーザーでなければ成立させない。`prompt: select_account` のため
   // 別のアカウントを選べるうえ、引き継ぐ loginAt が無ければタイムアウトの起点も決められない。
   if (isReauth && (!previous || previous.supabaseUserId !== claims.sub)) {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" });
     const reason = previous ? "reauth_account_mismatch" : "reauth_session_expired";
     return NextResponse.redirect(`${origin}/login?error=${reason}`);
   }
