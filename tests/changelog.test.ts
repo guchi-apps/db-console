@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import packageJson from "../package.json";
 import { APP_CHANGELOG } from "../src/lib/changelog";
 import {
-  CHANGELOG_PLACEHOLDER,
   insertChangelogEntry,
   parseReleaseChangelog,
   parseReleaseUsage,
@@ -19,8 +18,24 @@ const HEADER = `export const APP_CHANGELOG: ChangelogEntry[] = [
 `;
 
 describe("APP_CHANGELOG", () => {
-  it("先頭エントリが package.json のバージョンと一致する", () => {
-    expect(APP_CHANGELOG[0]?.version).toBe(packageJson.version);
+  it("先頭エントリが package.json のバージョンを超えない", () => {
+    // 画面で体感できる変化が無いリリースはエントリを作らないため、一致するとは限らない
+    const toParts = (version: string) => version.split(".").map(Number);
+    const [headMajor, headMinor, headPatch] = toParts(APP_CHANGELOG[0].version);
+    const [major, minor, patch] = toParts(packageJson.version);
+    const isNotNewer =
+      headMajor < major ||
+      (headMajor === major && headMinor < minor) ||
+      (headMajor === major && headMinor === minor && headPatch <= patch);
+    expect(isNotNewer, `${APP_CHANGELOG[0].version} は ${packageJson.version} を超えてはならない`).toBe(
+      true,
+    );
+  });
+
+  it("仮の文言（変更内容を追記してください）が残っていない", () => {
+    for (const entry of APP_CHANGELOG) {
+      expect(entry.changes.join("\n"), `v${entry.version}`).not.toContain("追記してください");
+    }
   });
 
   it("バージョンが新しい順に並び、重複しない", () => {
@@ -84,10 +99,30 @@ describe("insertChangelogEntry", () => {
     expect(content).not.toContain("usage:");
   });
 
-  it("changes が空のときは後から埋めるための枠を作る", () => {
-    const { content } = insertChangelogEntry(HEADER, "0.3.0", "2026-08-27", []);
+  it("changes が空のときはエントリを作らない", () => {
+    const { content, inserted } = insertChangelogEntry(HEADER, "0.3.0", "2026-08-27", []);
 
-    expect(content).toContain(CHANGELOG_PLACEHOLDER);
+    expect(inserted).toBe(false);
+    expect(content).toBe(HEADER);
+  });
+
+  it("changes が空なら usage だけあってもエントリを作らない", () => {
+    const { content, inserted } = insertChangelogEntry(
+      HEADER,
+      "0.3.0",
+      "2026-08-27",
+      [],
+      ["1. 設定を開く"],
+    );
+
+    expect(inserted).toBe(false);
+    expect(content).toBe(HEADER);
+  });
+
+  it("changes が空でもマーカーが無ければ失敗する", () => {
+    expect(() => insertChangelogEntry("export const OTHER = [];\n", "0.3.0", "2026-08-27", [])).toThrow(
+      "APP_CHANGELOG marker not found",
+    );
   });
 
   it("usage があるときだけ usage を書き出す", () => {
