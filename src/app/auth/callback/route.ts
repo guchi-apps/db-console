@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
-import { isEmailAllowed } from "@/lib/allowed-emails";
+import { isClaimsAllowed } from "@/lib/access/client";
 import { sanitizeReturnTo } from "@/lib/return-to";
 import { getRequestOrigin } from "@/lib/request-origin";
 import { db } from "@/lib/db";
@@ -39,10 +39,10 @@ export async function GET(request: Request) {
   const { data } = await supabase.auth.getClaims();
   const claims = data?.claims;
 
-  // 許可リスト判定はログイン直後にも行う（issue #2: 許可されたユーザー以外を拒否する）。
+  // 許可判定（StatusHubの共通アクセス設定）はログイン直後にも行う（issue #2: 許可されたユーザー以外を拒否する）。
   // このファイルの signOut は、共有Supabaseの他アプリのセッションを巻き込まないよう
   // すべて local scope で呼ぶ（#161）。
-  if (!claims?.email || !isEmailAllowed(claims.email)) {
+  if (!claims?.email || !(await isClaimsAllowed(claims))) {
     await supabase.auth.signOut({ scope: "local" });
     return NextResponse.redirect(`${origin}/login?error=forbidden`);
   }

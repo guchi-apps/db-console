@@ -36,6 +36,13 @@ export type ChangelogEntry = {
  */
 export const APP_CHANGELOG: ChangelogEntry[] = [
   {
+    version: "2.1.0",
+    date: "2026-10-07",
+    changes: [
+      "ログインできる利用者の管理を、他のアプリと共通のアクセス設定にまとめました。許可・取り消しの変更が、このアプリにも自動で反映されます。",
+    ],
+  },
+  {
     version: "2.0.10",
     date: "2026-09-21",
     changes: [
