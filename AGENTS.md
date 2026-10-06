@@ -248,6 +248,16 @@ MySQL/MariaDBはGRANT文のDB名を「パターン」として扱い、付与す
 **画面表示用の表示名（`ManagedDatabase.label`）は #97 で廃止した**——DB名をそのまま表示する。
 表示名を復活させる変更はこの決定を覆すことになるので、Issueで相談する。
 
+### ログイン許可の判定はStatusHubの共通アクセス設定（#191）
+
+ログイン許可は `ALLOWED_EMAILS` ではなく、StatusHubの判定API（`src/lib/access/client.ts` の
+`isClaimsAllowed()`）で決める。`getSession()` と `/auth/callback` が呼ぶ。結果は30秒キャッシュし、
+取得できないときは直前の判定を最大5分まで使い、超えたら・一度も判定できていない利用者は拒否する。
+**旧環境変数を判定にもフォールバックにも使わない**（取り消した利用者が通ってしまうため。`ALLOWED_EMAILS` は廃止済み）。
+アプリ別トークンは issue-deck の共有トークン `DB_CONSOLE_ACCESS_APP_TOKEN` から実行時に読む
+（`ISSUE_DECK_URL`・`SHARED_TOKEN_API_SECRET` が必要）。反映状況の確認のため、`src/instrumentation.ts` が
+4分ごとにハートビートを送る。**判定へ送るのはJWTの署名検証済みクレームだけ**にする。
+
 ## アプリ名・アイコン
 
 利用者に見せる名前とアイコンの一次情報源は `src/lib/app-branding.tsx`（`APP_NAME` / 配色 /
@@ -308,7 +318,6 @@ GitHub Actions の無人実行）では、CI と同じプレースホルダー�
 DATABASE_URL=mysql://root@127.0.0.1:3306/db_console_test \
 NEXT_PUBLIC_SUPABASE_URL=https://dummy-project.supabase.co \
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=dummy-publishable-key-for-ci-only \
-ALLOWED_EMAILS=test@example.com \
 npm run build
 ```
 

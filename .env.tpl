@@ -11,9 +11,6 @@ DB_PORT=op://apps/DB/db-port
 NEXT_PUBLIC_SUPABASE_URL=op://apps/Supabase/project-url
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=op://apps/Supabase/publishable-key
 
-# ログイン許可メールアドレス（カンマ区切り、複数可）
-ALLOWED_EMAILS=op://apps/db-console/allowed-emails
-
 # 管理対象DBへの通常操作用ロール（M5でVPS側に作成。db_console_data 等）
 DB_CONSOLE_DATA_USER=op://apps/db-console/db-console-data-user
 DB_CONSOLE_DATA_PASSWORD=op://apps/db-console/db-console-data-password

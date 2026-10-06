@@ -31,6 +31,12 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+// 許可判定はStatusHubの判定APIへの通信になるため、メールで決めるモックに差し替える。
+vi.mock("@/lib/access/client", () => ({
+  isClaimsAllowed: async (claims: { email?: string }) =>
+    ["owner@example.com", "other@example.com"].includes(claims.email ?? ""),
+}));
+
 vi.mock("@/lib/request-origin", () => ({ getRequestOrigin: async () => "https://console.example.com" }));
 
 import { GET } from "@/app/auth/callback/route";
@@ -46,7 +52,6 @@ const callback = (query: string) =>
   GET(new Request(`https://console.example.com/auth/callback?${query}`));
 
 beforeEach(() => {
-  process.env.ALLOWED_EMAILS = `${OWNER},other@example.com`;
   state.claimsQueue = [];
   state.exchangeError = null;
   state.signOut.mockReset();
