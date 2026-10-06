@@ -15,7 +15,6 @@ env:
   DATABASE_URL: mysql://root@127.0.0.1:3306/db_console_test
   NEXT_PUBLIC_SUPABASE_URL: https://dummy-project.supabase.co
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: dummy-publishable-key-for-ci-only
-  ALLOWED_EMAILS: test@example.com
   DB_HOST: 127.0.0.1
   DB_PORT: 3306
   DB_CONSOLE_DATA_USER: dummy

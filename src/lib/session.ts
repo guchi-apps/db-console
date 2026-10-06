@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
-import { isEmailAllowed } from "@/lib/allowed-emails";
+import { isClaimsAllowed } from "@/lib/access/client";
 import { db } from "@/lib/db";
 
 const SESSION_MAX_AGE_MS = 8 * 60 * 60 * 1000; // 8時間（issue #1の推奨値）
@@ -28,9 +28,10 @@ export async function getSession(): Promise<Session | null> {
   const { data } = await supabase.auth.getClaims();
   const claims = data?.claims;
 
-  // 未ログイン、またはログイン後に許可リストから外れた場合は未認証扱いにする
-  // （issue #2: 許可されたユーザー以外をAPI側でも拒否する）。
-  if (!claims?.email || !isEmailAllowed(claims.email)) return null;
+  // 未ログイン、またはログイン後にStatusHubの共通アクセス設定で許可が外れた場合は
+  // 未認証扱いにする（issue #2: 許可されたユーザー以外をAPI側でも拒否する）。
+  // 判定は30秒キャッシュされ、取得できないときは直前の判定を最大5分まで使う。
+  if (!claims?.email || !(await isClaimsAllowed(claims))) return null;
 
   const appSession = await db.appSession.findUnique({
     where: { supabaseSessionId: claims.session_id },
