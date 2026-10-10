@@ -344,6 +344,13 @@ npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prism
 `schema.prisma` から enum 定義を消すだけで差分なしになる**（`DROP TYPE` にあたる文は要らない。
 #105 の `DatabaseMode` で確認）。
 
+**サブPCのリリース検証（issue-deck の統合検証）でビルドを通すには `bash scripts/verify-build.sh` を使う**（#207）。
+統合検証のコマンドは `.env` の無い新しいworktreeで単独の `bash -c` として走るため、検証用DBも自前で用意する。
+このスクリプトはサブPCの `mysqld` を一時ディレクトリ・空きポート・認証なしrootで起動し、
+`prisma migrate deploy` → `npm run build` を流して終了時に必ず止めて消す（常駐DB・実シークレットには触れない）。
+サブPCは MySQL 8.0 で本番・CIの MariaDB 10.11 とは別物のため、マイグレーションが適用できるかは分かるが
+MariaDB 固有の差異までは保証しない（それはCIの役割）。
+
 `prisma.config.ts` は DATABASE_URL が未設定のとき、接続できないプレースホルダーへ倒す。
 **これが無いと `npm ci` の postinstall（`prisma generate`）ごと落ちる。** 詳細はファイル内のコメントを参照。
 
