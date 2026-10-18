@@ -61,4 +61,4 @@ npm run test:e2e  # E2E（Playwright）
 
 ## デプロイ
 
-`main`ブランチへのpushで`.github/workflows/deploy.yml`が実行され、VPSへ自動デプロイされる（GitHub Actions + 1Password + PM2）。
+`main`ブランチへのpushで`.github/workflows/deploy.yml`が実行され、VPSのapp-deploy-gate（guchi-apps/vps#301）経由で自動デプロイされる（GitHub Actions + PM2。値の正は1Password、実行時はGitHub Secrets）。手順と制約は`AGENTS.md`の「本番デプロイ（app-deploy-gate）」を参照。
