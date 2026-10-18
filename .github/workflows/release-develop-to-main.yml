@@ -50,7 +50,7 @@ jobs:
     # 参照タグは版番号ではなく中身で選んでいる（guchi-apps/db-console#214）。workflows/v52 は
     # candidate-request・finalize-request を持ち、同期pushで旧方式のバンプを始めない修正
     # （guchi-apps/issue-deck#4650・#4652）を含む。タグを上げるときも同じ確認をすること。
-    uses: guchi-apps/issue-deck/.github/workflows/reusable-release-develop-to-main.yml@workflows/v52
+    uses: guchi-apps/issue-deck/.github/workflows/reusable-release-develop-to-main.yml@workflows/v53
     # バージョンの読み書きに関する3つのinput（version-file・version-query・bump-command）は
     # すべて既定値でよい。このリポジトリはルートのpackage.jsonに version を持ち、npmを使い、
     # "version" lifecycleスクリプト（scripts/version-changelog.mjs）を定義しているため

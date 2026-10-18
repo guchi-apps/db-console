@@ -269,6 +269,37 @@ MySQL/MariaDBはGRANT文のDB名を「パターン」として扱い、付与す
 ログイン画面のタブアイコンとホーム画面へ追加したときのアイコンが `/login` へのリダイレクトになる。
 除外リストの `icon` は前方一致なので `/icons/*` も一緒に外れるが、`/apple-icon` は別途書く必要がある。
 
+## 稼働版の照合（`/api/app-version`）
+
+本番デプロイの照合は VPS の app-deploy-gate（guchi-apps/vps#301）が行う。`deploy.yml` が
+`APP_COMMIT_SHA` を gate へ送り、gate は `.env` の `APP_COMMIT_SHA` と `/api/app-version` の `sha` が
+一致するまで（最大60秒）成功にしない（#220）。`/login` は旧版が動いたままでも200を返すため。
+issue-deck の新方式リリースは、`deploy.yml` に `APP_COMMIT_SHA` と `/api/app-version` の照合が
+あることを稼働確認の根拠に使う。**この照合を `/login` などHTTP 200だけの判定へ戻さない。**
+
+このパスはデプロイ時に127.0.0.1から未ログインで叩くため、`src/lib/public-paths.ts` で**完全一致だけ**
+公開している。返すのは版とSHAだけで、DB・接続先・利用者に関わる値を足さないこと。
+
+## 本番デプロイ（app-deploy-gate）
+
+`main` へのマージで `deploy.yml` が走り、`deploy` ジョブは VPS の **app-deploy-gate**
+（`/usr/local/sbin/app-deploy-gate`。guchi-apps/vps#275・#301）へ `upload`（配布物）→ `env`（.env の値）→
+`deploy` の3語だけを送る（#220）。SSH鍵はこのアプリ専用（GitHub Secret `SSH_PRIVATE_KEY`、正は
+`op://apps/db-console/deploy-ssh-key`）で、VPS の `authorized_keys` の `command=` がgateのアプリ名
+`db-console`（置き場 `/home/github-user/apps/db-console`）を固定する。任意のシェルコマンドは実行できない。
+
+- 旧配布物の削除・展開・`.env` 更新・`npm ci --omit=dev`・`prisma migrate deploy`・pm2の再起動
+  （`deploy/ecosystem.config.js` の `db-console`）・稼働版の照合はgate側の固定手順。**配布物の中の
+  スクリプトをSSH先で実行する手順は足せない**（マイグレーション直前の処理だけは `deploy/pre-migrate.sh` に置ける）
+- `env` は標準入力の1行1変数（`KEY=VALUE`）。**改行を含む値は送れない**（`deploy.yml` が送る前に落とす）。
+  `.env` へ値を足すときは `Send environment variables` ステップの env・改行検査・`printf` の3か所へ足す
+- `MIGRATE_DATABASE_URL`（マイグレーション専用ユーザー）は `.env` へ書かれずマイグレーションだけに使われる。
+  未設定なら `DATABASE_URL` へフォールバックする。`MIGRATE_DB_USER`・`MIGRATE_DB_PASSWORD` は送らない
+- Prisma CLI は devDependencies だが、`@prisma/client` の peerDependency として `npm ci --omit=dev` でも
+  入る（gateはCLIが無いときだけマイグレーションの間に全依存を入れる）
+- 待受ポート `3109` は平文で `deploy.yml` に持つ（`PORT` はgateへ必須）
+- `TARGET_DIR` はgateが置き場を固定するため使わなくなった。マニフェストの行の撤去は移行を確かめてから
+
 ## 画面幅（スマホ / PC）
 
 **境目は Tailwind の `md`（768px）だけ。** それ未満はスマホ表示（従来どおりの1カラム＋画面下の

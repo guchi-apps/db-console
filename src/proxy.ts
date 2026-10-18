@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-// /auth 配下（callback・signout）は未ログイン状態で叩かれても安全なため素通りさせる。
-const PUBLIC_PATH_PREFIXES = ["/login", "/auth"];
+import { isPublicPath } from "@/lib/public-paths";
 
 /**
  * リクエストごとに Supabase のアクセストークンをリフレッシュし、更新後のCookieを
@@ -44,7 +43,7 @@ export async function proxy(request: NextRequest) {
   const { data } = await supabase.auth.getClaims();
 
   const { pathname } = request.nextUrl;
-  if (!data && !PUBLIC_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+  if (!data && !isPublicPath(pathname)) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
     }

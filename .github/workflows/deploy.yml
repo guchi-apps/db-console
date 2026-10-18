@@ -120,7 +120,7 @@ jobs:
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
       NEXT_PUBLIC_SUPABASE_URL: ${{ vars.SUPABASE_PROJECT_URL }}
       SSH_PORT: ${{ secrets.SERVER_SSH_PORT }}
-      SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
       USERNAME: ${{ secrets.SERVER_USERNAME }}
       ISSUE_DECK_URL: ${{ vars.APP_BASE_URL }}
       SHARED_TOKEN_API_SECRET: ${{ secrets.SHARED_TOKEN_API_SECRET }}
@@ -168,6 +168,9 @@ jobs:
           DB_CONSOLE_SCHEMA_PASSWORD: ${{ env.DB_CONSOLE_SCHEMA_PASSWORD }}
 
       - name: Create archive
+        # scripts/construct-database-url.sh・scripts/update-env-file.sh は配布物から外した（#220）。
+        # どちらもVPS上のデプロイ手順（.env の更新）でだけ使っていたもので、.env の更新は
+        # app-deploy-gate が行う。アプリの実行時には読まない
         run: |
           tar -czf deploy.tar.gz \
             package.json \
@@ -177,8 +180,6 @@ jobs:
             prisma \
             prisma.config.ts \
             deploy \
-            scripts/construct-database-url.sh \
-            scripts/update-env-file.sh \
             next.config.mjs
 
       - name: Upload artifact
@@ -209,7 +210,7 @@ jobs:
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
       NEXT_PUBLIC_SUPABASE_URL: ${{ vars.SUPABASE_PROJECT_URL }}
       SSH_PORT: ${{ secrets.SERVER_SSH_PORT }}
-      SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
       USERNAME: ${{ secrets.SERVER_USERNAME }}
       ISSUE_DECK_URL: ${{ vars.APP_BASE_URL }}
       SHARED_TOKEN_API_SECRET: ${{ secrets.SHARED_TOKEN_API_SECRET }}
@@ -249,19 +250,24 @@ jobs:
           HOST: ${{ env.HOST }}
           SSH_PORT: ${{ env.SSH_PORT }}
 
+      # **VPSのgate（/usr/local/sbin/app-deploy-gate。guchi-apps/vps#275・#301）へ渡す**（#220）。
+      # 鍵はこのアプリ専用で、VPSのauthorized_keysのcommand=がgateのアプリ名 db-console
+      # （置き場 /home/github-user/apps/db-console）を固定する。任意のシェルコマンドは実行できず、
+      # upload・env・deployの3語だけが通る。旧配布物の削除・展開・.env更新・npm ci --omit=dev・
+      # prisma migrate deploy・pm2の再起動（deploy/ecosystem.config.js が宣言する db-console）・
+      # 稼働版の照合（.env の APP_COMMIT_SHA と /api/app-version の sha。最大60秒）はgate側が行う。
       - name: Upload archive
-        run: scp -P "${SSH_PORT}" deploy.tar.gz "${USERNAME}@${HOST}:${TARGET_DIR}/deploy.tar.gz"
-        env:
-          HOST: ${{ env.HOST }}
-          USERNAME: ${{ env.USERNAME }}
-          SSH_PORT: ${{ env.SSH_PORT }}
-          TARGET_DIR: ${{ env.TARGET_DIR }}
+        run: ssh -p "${SSH_PORT}" "${USERNAME}@${HOST}" upload < deploy.tar.gz
 
-      - name: Deploy and restart
-        uses: appleboy/ssh-action@v1
+      - name: Send environment variables
         env:
-          DATABASE_URL: ${{ env.DATABASE_URL }}
+          # 稼働している版の照合に使う（#220）。gateが.envのAPP_COMMIT_SHAと稼働中の/api/app-versionの
+          # shaを照合する（guchi-apps/vps#298）。コミットのSHAは公開情報なのでそのまま渡してよい
+          APP_COMMIT_SHA: ${{ github.sha }}
+          # マイグレーション専用ユーザー（DDL権限あり）。gateは.envへ書かずマイグレーションだけに使う。
+          # 未設定の環境では通常ユーザーへフォールバックする
           MIGRATE_DATABASE_URL: ${{ env.MIGRATE_DATABASE_URL }}
+          DATABASE_URL: ${{ env.DATABASE_URL }}
           DB_USER: ${{ env.DB_USER }}
           DB_PASSWORD: ${{ env.DB_PASSWORD }}
           DB_HOST: ${{ env.DB_HOST }}
@@ -275,81 +281,38 @@ jobs:
           DB_CONSOLE_SCHEMA_PASSWORD: ${{ env.DB_CONSOLE_SCHEMA_PASSWORD }}
           DB_CONSOLE_ADMIN_USER: ${{ env.DB_CONSOLE_ADMIN_USER }}
           DB_CONSOLE_ADMIN_PASSWORD: ${{ env.DB_CONSOLE_ADMIN_PASSWORD }}
-          TARGET_DIR: ${{ env.TARGET_DIR }}
-        with:
-          host: ${{ env.HOST }}
-          username: ${{ env.USERNAME }}
-          key: ${{ env.SSH_PRIVATE_KEY }}
-          port: ${{ env.SSH_PORT }}
-          envs: DATABASE_URL,MIGRATE_DATABASE_URL,DB_USER,DB_PASSWORD,DB_HOST,DB_PORT,DB_NAME,ISSUE_DECK_URL,SHARED_TOKEN_API_SECRET,DB_CONSOLE_DATA_USER,DB_CONSOLE_DATA_PASSWORD,DB_CONSOLE_SCHEMA_USER,DB_CONSOLE_SCHEMA_PASSWORD,DB_CONSOLE_ADMIN_USER,DB_CONSOLE_ADMIN_PASSWORD,TARGET_DIR
-          script: |
-            set -euo pipefail
-            cd "${TARGET_DIR}"
+        run: |
+          set -euo pipefail
+          # gateは標準入力を1行1変数（KEY=VALUE）で受けるため、改行を含む値は送れない。
+          for name in MIGRATE_DATABASE_URL DATABASE_URL DB_USER DB_PASSWORD DB_HOST DB_PORT DB_NAME ISSUE_DECK_URL SHARED_TOKEN_API_SECRET DB_CONSOLE_DATA_USER DB_CONSOLE_DATA_PASSWORD DB_CONSOLE_SCHEMA_USER DB_CONSOLE_SCHEMA_PASSWORD DB_CONSOLE_ADMIN_USER DB_CONSOLE_ADMIN_PASSWORD; do
+            case "${!name:-}" in
+              *$'\n'*) echo "::error::${name} が改行を含むためgateへ送れません"; exit 1 ;;
+            esac
+          done
+          # 待受ポートはシークレットではなく設定値として平文で持つ
+          # （guchi-apps/docs の standards/ports.md「ポート番号は 1Password で管理しない」。#36）。
+          {
+            printf '%s\n' "NODE_ENV=production" "PORT=3109"
+            printf '%s\n' "APP_COMMIT_SHA=${APP_COMMIT_SHA}"
+            printf '%s\n' "MIGRATE_DATABASE_URL=${MIGRATE_DATABASE_URL:-$DATABASE_URL}"
+            printf '%s\n' "DATABASE_URL=${DATABASE_URL:-}"
+            printf '%s\n' "DB_USER=${DB_USER:-}"
+            printf '%s\n' "DB_PASSWORD=${DB_PASSWORD:-}"
+            printf '%s\n' "DB_HOST=${DB_HOST:-}"
+            printf '%s\n' "DB_PORT=${DB_PORT:-}"
+            printf '%s\n' "DB_NAME=${DB_NAME:-}"
+            printf '%s\n' "ISSUE_DECK_URL=${ISSUE_DECK_URL:-}"
+            printf '%s\n' "SHARED_TOKEN_API_SECRET=${SHARED_TOKEN_API_SECRET:-}"
+            printf '%s\n' "DB_CONSOLE_DATA_USER=${DB_CONSOLE_DATA_USER:-}"
+            printf '%s\n' "DB_CONSOLE_DATA_PASSWORD=${DB_CONSOLE_DATA_PASSWORD:-}"
+            printf '%s\n' "DB_CONSOLE_SCHEMA_USER=${DB_CONSOLE_SCHEMA_USER:-}"
+            printf '%s\n' "DB_CONSOLE_SCHEMA_PASSWORD=${DB_CONSOLE_SCHEMA_PASSWORD:-}"
+            printf '%s\n' "DB_CONSOLE_ADMIN_USER=${DB_CONSOLE_ADMIN_USER:-}"
+            printf '%s\n' "DB_CONSOLE_ADMIN_PASSWORD=${DB_CONSOLE_ADMIN_PASSWORD:-}"
+          } | ssh -p "${SSH_PORT}" "${USERNAME}@${HOST}" env
 
-            # 待受ポートはシークレットではなく設定値として平文で持つ
-            # （guchi-apps/docs の standards/ports.md「ポート番号は 1Password で管理しない」。#36）。
-            PORT=3109
-
-            echo "Cleaning up old release files..."
-            rm -rf .next public package.json package-lock.json prisma prisma.config.ts deploy next.config.mjs next.config.ts
-
-            echo "Extracting archive..."
-            tar -xzf deploy.tar.gz
-            rm deploy.tar.gz
-
-            update_env() {
-              bash scripts/update-env-file.sh .env "$1" "$2"
-            }
-
-            echo "Updating .env..."
-            update_env NODE_ENV production
-            update_env PORT "$PORT"
-            update_env DATABASE_URL "$DATABASE_URL"
-            update_env DB_USER "$DB_USER"
-            update_env DB_PASSWORD "$DB_PASSWORD"
-            update_env DB_HOST "$DB_HOST"
-            update_env DB_PORT "$DB_PORT"
-            update_env DB_NAME "$DB_NAME"
-            update_env ISSUE_DECK_URL "$ISSUE_DECK_URL"
-            update_env SHARED_TOKEN_API_SECRET "$SHARED_TOKEN_API_SECRET"
-            update_env DB_CONSOLE_DATA_USER "$DB_CONSOLE_DATA_USER"
-            update_env DB_CONSOLE_DATA_PASSWORD "$DB_CONSOLE_DATA_PASSWORD"
-            update_env DB_CONSOLE_SCHEMA_USER "$DB_CONSOLE_SCHEMA_USER"
-            update_env DB_CONSOLE_SCHEMA_PASSWORD "$DB_CONSOLE_SCHEMA_PASSWORD"
-            update_env DB_CONSOLE_ADMIN_USER "$DB_CONSOLE_ADMIN_USER"
-            update_env DB_CONSOLE_ADMIN_PASSWORD "$DB_CONSOLE_ADMIN_PASSWORD"
-
-            echo "Installing production dependencies..."
-            npm install --omit=dev --no-audit --prefer-offline
-
-            echo "Applying database migrations..."
-            DATABASE_URL="$MIGRATE_DATABASE_URL" npx prisma migrate deploy
-
-            echo "Restarting PM2..."
-            if command -v pm2 >/dev/null 2>&1; then
-              pm2 delete db-console 2>/dev/null || true
-              PORT="$PORT" pm2 start deploy/ecosystem.config.js --env production
-              pm2 save
-            else
-              echo "pm2 is required on the server. Install: npm install -g pm2"
-              exit 1
-            fi
-
-            echo "Health check..."
-            # Next.js は起動完了までに数秒かかる。1回だけの curl では起動を待ちきれず、
-            # アプリが正常に立ち上がっていても deploy ジョブが失敗する（guchi-apps/docs#29）。
-            for i in $(seq 1 30); do
-              if curl -fsS -o /dev/null "http://127.0.0.1:${PORT}/login"; then
-                echo "Deployment successful."
-                exit 0
-              fi
-              sleep 2
-            done
-
-            echo "Health check failed after 60s."
-            pm2 describe db-console || true
-            pm2 logs db-console --lines 50 --nostream || true
-            exit 1
+      - name: Deploy and restart
+        run: ssh -p "${SSH_PORT}" "${USERNAME}@${HOST}" deploy
 
       - name: Signaly に通知
         # 通知のためだけにジョブを分けない（notify-releaseと同じ理由）。deployが動かなかった
