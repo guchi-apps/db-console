@@ -24,4 +24,4 @@ DB_CONSOLE_ADMIN_USER=op://apps/db-console/db-console-admin-user
 DB_CONSOLE_ADMIN_PASSWORD=op://apps/db-console/db-console-admin-password
 
 # CI / デプロイ通知（Signaly）
-SIGNALY_WEBHOOK_URL=op://apps/db-console/ci-webhook-url
+SIGNALY_WEBHOOK_URL=op://apps/Notify/ci-webhook-url
