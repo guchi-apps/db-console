@@ -20,8 +20,10 @@ DB_CONSOLE_SCHEMA_USER=op://apps/db-console/db-console-schema-user
 DB_CONSOLE_SCHEMA_PASSWORD=op://apps/db-console/db-console-schema-password
 
 # DB作成・DBユーザー管理用ロール（#91でVPS側に作成。db_console_admin 等）
-DB_CONSOLE_ADMIN_USER=op://apps/db-console/db-console-admin-user
-DB_CONSOLE_ADMIN_PASSWORD=op://apps/db-console/db-console-admin-password
+# 1Passwordに同名フィールドが2組あるため、本番 .env と一致する組（表示名なしのセクション）をフィールドIDで指す（#228）。
+# vrrgy557… = db-console-admin-user、k24sfi5h… = db-console-admin-password
+DB_CONSOLE_ADMIN_USER=op://apps/db-console/vrrgy557vmw57tfx7pmazpluzm
+DB_CONSOLE_ADMIN_PASSWORD=op://apps/db-console/k24sfi5hwt3h7v6oldjzu2e7qy
 
 # CI / デプロイ通知（Signaly）
-SIGNALY_WEBHOOK_URL=op://apps/db-console/ci-webhook-url
+SIGNALY_WEBHOOK_URL=op://apps/Notify/ci-webhook-url
