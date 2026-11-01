@@ -132,7 +132,6 @@ jobs:
       DB_CONSOLE_SCHEMA_USER: ${{ secrets.DB_CONSOLE_SCHEMA_USER }}
       DB_NAME: ${{ secrets.DB_NAME }}
       SIGNALY_WEBHOOK_URL: ${{ secrets.SIGNALY_WEBHOOK_URL }}
-      TARGET_DIR: ${{ secrets.TARGET_DIR }}
 
     steps:
       - name: Checkout code
@@ -222,7 +221,6 @@ jobs:
       DB_CONSOLE_SCHEMA_USER: ${{ secrets.DB_CONSOLE_SCHEMA_USER }}
       DB_NAME: ${{ secrets.DB_NAME }}
       SIGNALY_WEBHOOK_URL: ${{ secrets.SIGNALY_WEBHOOK_URL }}
-      TARGET_DIR: ${{ secrets.TARGET_DIR }}
 
     steps:
       - name: Checkout code

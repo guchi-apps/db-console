@@ -305,7 +305,7 @@ issue-deck の新方式リリースは、`deploy.yml` に `APP_COMMIT_SHA` と `
 - Prisma CLI は devDependencies だが、`@prisma/client` の peerDependency として `npm ci --omit=dev` でも
   入る（gateはCLIが無いときだけマイグレーションの間に全依存を入れる）
 - 待受ポート `3109` は平文で `deploy.yml` に持つ（`PORT` はgateへ必須）
-- `TARGET_DIR` はgateが置き場を固定するため使わなくなった。マニフェストの行の撤去は移行を確かめてから
+- `TARGET_DIR` はgateが置き場を固定するため使わなくなった。マニフェストからも撤去した
 
 ## 画面幅（スマホ / PC）
 
