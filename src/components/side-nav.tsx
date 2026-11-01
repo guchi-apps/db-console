@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Database, Home, Settings } from "lucide-react";
+import { Database, Home, Network, Settings } from "lucide-react";
 
 import { APP_ICON_BACKGROUND, APP_NAME, AppIconGlyph } from "@/lib/app-branding";
 
@@ -103,6 +103,17 @@ export function SideNav({
               </NavLink>
               {isActive && (
                 <div className="border-border ml-4 flex flex-col border-l pl-2.5">
+                  <Link
+                    href={`/databases/${entry.name}/relations`}
+                    className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-xs ${
+                      pathname === `/databases/${entry.name}/relations`
+                        ? "bg-accent text-foreground font-medium"
+                        : "text-muted-foreground hover:bg-accent/60"
+                    }`}
+                  >
+                    <Network className="h-3.5 w-3.5 shrink-0" />
+                    リレーション
+                  </Link>
                   {tables === null && (
                     <span className="text-muted-foreground px-2 py-1 text-xs">
                       読み込み中…

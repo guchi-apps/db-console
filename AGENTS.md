@@ -73,6 +73,13 @@ MariaDBは文字列を引用符付き（`'abc'`）、NULLデフォルトを文�
 `SHOW VIEW` はローカルの `scripts/setup-db.sh` では両ロールへ付与済み。**本番VPSのロールには
 付いていない**ため、本番でビュー定義を表示するにはGRANTの追加が要る（#86 から切り出した手作業Issue）。
 
+### リレーション画面（#234）
+
+`/databases/[db]/relations` は外部キー制約（`information_schema.key_column_usage`）だけから描く。
+**カラム名（`xxx_id`）から関係を推測しない**——制約が無いDBでは「表示できない」と出す。
+他DBを参照する外部キーは `getTableForeignKeys()` と同じく対象外。図は依存ライブラリを使わず、
+配置を `src/lib/relation-layout.ts`（純関数・`tests/relation-layout.test.ts`）で決めてSVGへ渡している。
+
 ### 操作モードの廃止と構造変更のゲート（#105）
 
 **管理対象DBごとの操作モード（閲覧のみ / データ編集可 / 構造変更可）は廃止した。**
