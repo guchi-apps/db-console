@@ -30,6 +30,12 @@ export default async function TablesPage({
           <h1 className="text-xl font-semibold md:text-2xl">{entry.name}</h1>
           <div className="flex gap-2">
             <Link
+              href={`/databases/${db}/relations`}
+              className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
+            >
+              リレーション
+            </Link>
+            <Link
               href={`/databases/${db}/sql`}
               className="rounded-md border px-3 py-1 text-sm hover:bg-accent"
             >

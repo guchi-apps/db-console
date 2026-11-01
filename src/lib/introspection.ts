@@ -17,6 +17,7 @@ import {
   quoteColumn,
   quoteIdentifier,
 } from "@/lib/identifier";
+import { buildDatabaseRelations, type DatabaseRelations } from "@/lib/relations";
 import { getPoolForOperation } from "@/lib/target-db";
 
 export interface DatabaseInfo {
@@ -269,6 +270,54 @@ export async function getTableForeignKeys(
     referencedTable: row.referenced_table_name as string,
     referencedColumn: row.referenced_column_name as string,
   }));
+}
+
+/**
+ * DB全体のテーブルと外部キーの関係を取得する（読み取り専用。#234）。
+ * 参照先が他DBの外部キーは `getTableForeignKeys()` と同じく対象外にする。
+ * 外部キー制約を張っていないDB（MyISAM等）では edges が空になる——命名からの推測はしない。
+ */
+export async function getDatabaseRelations(databaseName: string): Promise<DatabaseRelations> {
+  assertSafeDatabaseName(databaseName);
+  const tables = await listTables(databaseName);
+  const pool = await getPoolForOperation(databaseName, "read-only");
+
+  const [[columnRows], [fkRows]] = await Promise.all([
+    pool.query<RowDataPacket[]>(
+      `SELECT table_name AS table_name, column_name AS column_name, column_key AS column_key
+       FROM information_schema.columns
+       WHERE table_schema = ?
+       ORDER BY table_name, ordinal_position`,
+      [databaseName],
+    ),
+    pool.query<RowDataPacket[]>(
+      `SELECT constraint_name AS constraint_name, table_name AS table_name,
+              column_name AS column_name, referenced_table_name AS referenced_table_name,
+              referenced_column_name AS referenced_column_name,
+              ordinal_position AS ordinal_position
+       FROM information_schema.key_column_usage
+       WHERE table_schema = ? AND referenced_table_schema = ?
+         AND referenced_table_name IS NOT NULL
+       ORDER BY table_name, constraint_name, ordinal_position`,
+      [databaseName, databaseName],
+    ),
+  ]);
+
+  return buildDatabaseRelations(
+    tables,
+    columnRows.map((row) => ({
+      tableName: row.table_name as string,
+      columnName: row.column_name as string,
+      columnKey: (row.column_key as string) ?? "",
+    })),
+    fkRows.map((row) => ({
+      constraintName: row.constraint_name as string,
+      tableName: row.table_name as string,
+      columnName: row.column_name as string,
+      referencedTable: row.referenced_table_name as string,
+      referencedColumn: row.referenced_column_name as string,
+    })),
+  );
 }
 
 const MAX_PAGE_SIZE = 200;
