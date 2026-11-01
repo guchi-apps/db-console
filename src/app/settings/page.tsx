@@ -7,7 +7,7 @@ import { syncManagedAppDatabases } from "@/lib/managed-db-sync";
 import { requireSessionForPage } from "@/lib/session";
 import { listRegistrableDatabaseNames } from "@/lib/target-db";
 import { ChangelogDialog } from "@/components/changelog-dialog";
-import { DeleteManagedDatabaseButton } from "@/components/delete-managed-database-button";
+import { DeleteManagedDatabaseCard } from "@/components/delete-managed-database-button";
 import {
   createDatabaseAction,
   createManagedDatabaseAction,
@@ -70,27 +70,29 @@ export default async function SettingsPage({
       {/* lg以上は「登録済みDBの編集」と「追加・アプリ情報」を左右に分ける。 */}
       <div className="flex flex-col gap-6 lg:grid lg:grid-cols-2 lg:items-start">
         <div className="flex flex-col gap-6">
-          <h2 className="font-medium">管理対象データベース</h2>
+          <section className="flex flex-col gap-2 rounded-lg border p-4">
+            <h2 className="font-medium">管理対象データベース</h2>
+            <ul className="flex flex-col">
+              {databases.map((entry) => (
+                <li
+                  key={entry.name}
+                  className="min-w-0 truncate border-t py-3 text-sm font-medium first:border-t-0"
+                >
+                  {entry.name}
+                </li>
+              ))}
+              {databases.length === 0 && (
+                <li className="text-muted-foreground text-sm">
+                  管理対象データベースが登録されていません
+                </li>
+              )}
+            </ul>
+          </section>
 
-          <ul className="flex flex-col gap-3">
-            {databases.map((entry) => (
-              <li
-                key={entry.name}
-                className="flex items-center justify-between gap-3 rounded-lg border p-4"
-              >
-                <span className="min-w-0 truncate font-medium">{entry.name}</span>
-                <DeleteManagedDatabaseButton
-                  action={deleteManagedDatabaseAction}
-                  name={entry.name}
-                />
-              </li>
-            ))}
-            {databases.length === 0 && (
-              <li className="text-muted-foreground text-sm">
-                管理対象データベースが登録されていません
-              </li>
-            )}
-          </ul>
+          <DeleteManagedDatabaseCard
+            action={deleteManagedDatabaseAction}
+            names={databases.map((entry) => entry.name)}
+          />
         </div>
 
         <div className="flex flex-col gap-6">
