@@ -59,6 +59,19 @@ npm test          # 単体テスト（Vitest）
 npm run test:e2e  # E2E（Playwright）
 ```
 
+## リリース検証用ビルド（`scripts/verify-build.sh`）
+
+使い捨ての `mysqld` を一時ディレクトリで起動し、`prisma migrate deploy` → `npm run build` を流す
+（常駐DB・sudo不要）。`mysqld` は PATH → `/usr/sbin` → Homebrew（`<prefix>/opt/mysql@8.0/bin`、
+`<prefix>/opt/mysql/bin`）の順に探す。
+
+- Linux（サブPC）: `mysql-server` を入れる
+- macOS（Mac mini）: `brew install mysql@8.0`（keg-only でも `brew` の配置から見つかる）
+
+```bash
+bash scripts/verify-build.sh
+```
+
 ## デプロイ
 
 `main`ブランチへのpushで`.github/workflows/deploy.yml`が実行され、VPSのapp-deploy-gate（guchi-apps/vps#301）経由で自動デプロイされる（GitHub Actions + PM2。値の正は1Password、実行時はGitHub Secrets）。手順と制約は`AGENTS.md`の「本番デプロイ（app-deploy-gate）」を参照。
