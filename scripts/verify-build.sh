@@ -7,7 +7,7 @@
 # （ルートは認証なし・127.0.0.1の空きポートのみ・接続情報はこのスクリプトの中だけに存在する）。
 #
 # 使い方（リポジトリのルートで）: bash scripts/verify-build.sh
-# 前提: `mysqld` が PATH か /usr/sbin にあること。root権限・sudoは不要。
+# 前提: `mysqld` が PATH・/usr/sbin・Homebrew（mysql@8.0）のいずれかにあること。root権限・sudoは不要。
 #
 # 注意: 本番・CIは MariaDB 10.11、サブPCは MySQL 8.0 のため、マイグレーションの適用可否は
 # 検証できるが MariaDB 固有の差異までは保証しない。
@@ -17,16 +17,43 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-MYSQLD="$(command -v mysqld || true)"
-[[ -z "$MYSQLD" && -x /usr/sbin/mysqld ]] && MYSQLD=/usr/sbin/mysqld
+# mysqld / mysql を探す。PATH → Linux の /usr/sbin → Homebrew（macOS。Apple Silicon は
+# /opt/homebrew、Intel は /usr/local。mysql@8.0 は keg-only で PATH に載らないことがある）の順。
+BREW_PREFIXES=(/opt/homebrew /usr/local)
+if command -v brew >/dev/null 2>&1; then
+  BREW_PREFIXES=("$(brew --prefix 2>/dev/null || true)" "${BREW_PREFIXES[@]}")
+fi
+find_mysql_bin() {
+  local name="$1" found prefix formula
+  found="$(command -v "$name" || true)"
+  [[ -z "$found" && -x "/usr/sbin/$name" ]] && found="/usr/sbin/$name"
+  if [[ -z "$found" ]]; then
+    for prefix in "${BREW_PREFIXES[@]}"; do
+      [[ -n "$prefix" ]] || continue
+      for formula in mysql@8.0 mysql; do
+        if [[ -x "$prefix/opt/$formula/bin/$name" ]]; then
+          found="$prefix/opt/$formula/bin/$name"
+          break 2
+        fi
+      done
+    done
+  fi
+  printf '%s' "$found"
+}
+
+MYSQLD="$(find_mysql_bin mysqld)"
 if [[ -z "$MYSQLD" ]]; then
   echo "Error: mysqld が見つかりません。検証用DBを起動できないためビルドを検証できません。" >&2
+  echo "       macOS は \`brew install mysql@8.0\` で入れてください（docs/verify-build.md）。" >&2
   exit 1
 fi
-if ! command -v mysql >/dev/null 2>&1; then
+MYSQL_CLIENT="$(find_mysql_bin mysql)"
+if [[ -z "$MYSQL_CLIENT" ]]; then
   echo "Error: mysql クライアントが見つかりません。" >&2
   exit 1
 fi
+# 以降の `mysql` 呼び出しが同じ keg を使うよう、見つけたディレクトリを PATH の先頭へ
+export PATH="$(dirname "$MYSQL_CLIENT"):$PATH"
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/db-console-verify.XXXXXX")"
 SOCKET="$WORK/mysqld.sock"
